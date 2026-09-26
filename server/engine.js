@@ -47,17 +47,28 @@ const MOVES = [
     env: ACTIVE, cue: 'Hip circles, arm circles, torso twists — smooth and easy.' },
   { id: 'stretch', name: 'Full-body stretch', cat: 'mobility', unit: 'sec', amount: [45, 60, 60], secPer: 1, finisher: true,
     env: ACTIVE, cue: 'Hamstrings, quads, chest and shoulders — breathe slowly.' },
-  // Classroom mode: quiet, seated, zero-disruption moves
-  { id: 'posture_reset', name: 'Posture reset', cat: 'mobility', unit: 'sec', amount: [30, 30, 30], secPer: 1, quiet: true,
+  // Classroom mode: quiet, seated, zero-disruption moves (quiet: true)
+  // Seated / adaptive mode: everything marked seated: true works from a chair or wheelchair, anywhere
+  { id: 'posture_reset', name: 'Posture reset', cat: 'mobility', unit: 'sec', amount: [30, 30, 30], secPer: 1, quiet: true, seated: true,
     env: ['classroom'], cue: 'Sit tall, shoulder blades back and down, 5 slow breaths.' },
-  { id: 'shoulder_rolls', name: 'Shoulder mobility', cat: 'mobility', unit: 'reps', amount: [10, 15, 20], secPer: 2, quiet: true,
+  { id: 'shoulder_rolls', name: 'Shoulder mobility', cat: 'mobility', unit: 'reps', amount: [10, 15, 20], secPer: 2, quiet: true, seated: true,
     env: ['classroom', 'room', 'hostel'], cue: 'Slow shoulder rolls, half forwards, half backwards.' },
-  { id: 'ankle_circles', name: 'Ankle movement', cat: 'mobility', unit: 'reps', amount: [10, 15, 20], secPer: 2, quiet: true,
+  { id: 'ankle_circles', name: 'Ankle movement', cat: 'mobility', unit: 'reps', amount: [10, 15, 20], secPer: 2, quiet: true, seated: true,
     env: ['classroom'], cue: 'Circle each ankle under the desk, both directions.' },
-  { id: 'seated_leg_ext', name: 'Seated leg extensions', cat: 'strength', unit: 'reps', amount: [10, 12, 15], secPer: 2, quiet: true,
+  { id: 'seated_leg_ext', name: 'Seated leg extensions', cat: 'strength', unit: 'reps', amount: [10, 12, 15], secPer: 2, quiet: true, seated: true,
     env: ['classroom'], cue: 'Straighten one knee, hold 1 second, lower. Alternate.' },
-  { id: 'neck_release', name: 'Neck release', cat: 'mobility', unit: 'sec', amount: [30, 30, 30], secPer: 1, quiet: true,
+  { id: 'neck_release', name: 'Neck release', cat: 'mobility', unit: 'sec', amount: [30, 30, 30], secPer: 1, quiet: true, seated: true,
     env: ['classroom', 'room', 'hostel'], cue: 'Ear toward shoulder, hold, switch sides. Gentle.' },
+  { id: 'seated_march', name: 'Seated march', cat: 'endurance', unit: 'sec', amount: [45, 60, 60], secPer: 1, seated: true, flex: true,
+    env: [], cue: 'Sit tall and lift knees alternately at a brisk pace, pump your arms.' },
+  { id: 'seated_arm_raises', name: 'Seated arm raises', cat: 'strength', unit: 'reps', amount: [10, 15, 20], secPer: 2.5, cv: 'arms', seated: true,
+    env: [], cue: 'Raise both arms overhead, then lower to shoulder height. Face the camera.' },
+  { id: 'seated_punches', name: 'Seated punches', cat: 'endurance', unit: 'reps', amount: [20, 30, 40], secPer: 1, seated: true,
+    env: [], cue: 'Fast alternating punches forward, keep your core tight.' },
+  { id: 'seated_twist', name: 'Seated torso twist', cat: 'mobility', unit: 'sec', amount: [30, 30, 45], secPer: 1, quiet: true, seated: true,
+    env: [], cue: 'Hands on shoulders, rotate slowly left and right from the waist.' },
+  { id: 'seated_stretch', name: 'Seated full-body stretch', cat: 'mobility', unit: 'sec', amount: [45, 45, 60], secPer: 1, seated: true, seatedFinisher: true,
+    env: [], cue: 'Reach overhead, lean side to side, then fold forward gently.' },
 ];
 
 const TRANSITION = 10; // seconds between moves
@@ -99,9 +110,10 @@ function makeItem(move, amount, label) {
   };
 }
 
-function missionTitle(minutes, { classroom, comeback }) {
+function missionTitle(minutes, { classroom, comeback, adaptive }) {
   if (comeback) return `${minutes} MIN COMEBACK`;
   if (classroom) return 'CLASSROOM MODE';
+  if (adaptive) return `${minutes} MIN SEATED ${minutes <= 5 ? 'RESET' : 'BOOST'}`;
   if (minutes <= 3) return `${minutes} MIN RESET`;
   if (minutes <= 7) return `${minutes} MIN QUICK MOVE`;
   if (minutes <= 12) return `${minutes} MIN ENERGY BOOST`;
@@ -124,14 +136,17 @@ function generateMission(user, ctx, recent) {
   const li = comeback ? 0 : levelIndex(user);
   const goal = GOALS.includes(user.profile?.goal) ? user.profile.goal : 'general';
   const lowImpact = Boolean(user.medical?.has);
+  const adaptive = Boolean(user.profile?.adaptive);
 
-  let pool = MOVES.filter((m) =>
-    m.env.includes(environment) &&
-    (!m.equip || equipment.includes(m.equip)) &&
-    (m.minLevel || 0) <= li &&
-    !(lowImpact && m.impact === 'high') &&
-    (!classroom || m.quiet)
-  );
+  // Adaptive (seated) mode: only chair-friendly moves, in any environment
+  const pool = MOVES.filter((m) => adaptive
+    ? m.seated && (!m.equip || equipment.includes(m.equip)) && (!classroom || m.quiet)
+    : m.env.includes(environment) &&
+      (!m.equip || equipment.includes(m.equip)) &&
+      (m.minLevel || 0) <= li &&
+      !(lowImpact && m.impact === 'high') &&
+      (!classroom || m.quiet)
+  ).map((m) => (adaptive && m.seatedFinisher ? { ...m, finisher: true } : m));
 
   const budget = minutes * 60;
   let used = 0;
@@ -168,7 +183,9 @@ function generateMission(user, ctx, recent) {
     add(m);
     mainSet.push(m);
   }
-  for (let round = 2; round <= 3 && mainSet.length; round++) {
+  // Seated moves are short: short seated missions stop at 2 rounds and give leftover time to the seated march
+  const maxRounds = adaptive && minutes < 15 ? 2 : 3;
+  for (let round = 2; round <= maxRounds && mainSet.length; round++) {
     let added = 0;
     for (const m of mainSet) {
       if (!fits(estSeconds(m, m.amount[li]) + reserve)) continue;
@@ -197,13 +214,14 @@ function generateMission(user, ctx, recent) {
     : null;
 
   return {
-    title: missionTitle(minutes, { classroom, comeback }),
+    title: missionTitle(minutes, { classroom, comeback, adaptive }),
     minutes,
     environment,
     equipment,
     level: LEVELS[li],
     comeback,
     lowImpact,
+    adaptive,
     items,
     maxXp: Math.round(items.reduce((s, it) => s + it.xp * 1.5, 0)) + 10 + (comeback ? 30 : 0),
     followUp,
@@ -211,14 +229,16 @@ function generateMission(user, ctx, recent) {
 }
 
 /**
- * results: [{ done, verified, achieved }]
- * Verified (camera-confirmed) work earns 1.5x.
+ * results: [{ done, verified, achieved, formScore? }]
+ * Verified (camera-confirmed) work earns 1.5x; verified work with good form (>= 80) earns a further 20%.
  */
-function scoreMission(mission, results, { firstToday, streakAfter }) {
+function scoreMission(mission, results, { firstToday, streakAfter, buddyMovedToday = false }) {
   let xp = 0;
+  let formXp = 0;
   let activeSec = 0;
   let verifiedCount = 0;
   let doneCount = 0;
+  const formScores = [];
   const breakdown = [];
 
   mission.items.forEach((item, i) => {
@@ -229,11 +249,21 @@ function scoreMission(mission, results, { firstToday, streakAfter }) {
     const ratio = Math.min(1, achieved / item.target);
     const verified = Boolean(r.verified && item.cv);
     if (verified) verifiedCount++;
-    xp += Math.round(item.xp * ratio * (verified ? 1.5 : 1));
+    const itemXp = Math.round(item.xp * ratio * (verified ? 1.5 : 1));
+    xp += itemXp;
     activeSec += item.estSec * ratio;
+    const form = Number(r.formScore);
+    if (verified && Number.isFinite(form) && form >= 0 && form <= 100) {
+      formScores.push(form);
+      if (form >= 80) formXp += Math.round(itemXp * 0.2);
+    }
   });
 
   breakdown.push({ label: 'Mission work', xp });
+  if (formXp) {
+    xp += formXp;
+    breakdown.push({ label: 'Good form bonus', xp: formXp });
+  }
   if (doneCount === mission.items.length && doneCount > 0) {
     xp += 10;
     breakdown.push({ label: 'Mission complete', xp: 10 });
@@ -247,17 +277,112 @@ function scoreMission(mission, results, { firstToday, streakAfter }) {
     xp += b;
     breakdown.push({ label: `${streakAfter}-day consistency`, xp: b });
   }
-  return { xp, activeMin: Math.round((activeSec / 60) * 10) / 10, verifiedCount, doneCount, breakdown };
+  if (doneCount > 0 && firstToday && buddyMovedToday) {
+    xp += 10;
+    breakdown.push({ label: 'You and your buddy both moved today', xp: 10 });
+  }
+  const formAvg = formScores.length ? Math.round(formScores.reduce((a, b) => a + b, 0) / formScores.length) : null;
+  return { xp, activeMin: Math.round((activeSec / 60) * 10) / 10, verifiedCount, doneCount, formAvg, breakdown };
 }
 
 // ---------- Fitness assessment (AI Engine 1) ----------
+// norm = the value treated as a strong result for a student (used for level + bands)
 const TESTS = [
   { key: 'squats', label: 'Squats in 30s', norm: 25 },
   { key: 'pushups', label: 'Push-ups in 30s', norm: 20 },
   { key: 'jumpingJacks', label: 'Jumping jacks in 30s', norm: 35 },
   { key: 'plankSec', label: 'Plank hold (sec)', norm: 60 },
   { key: 'mobility', label: 'Squat-depth mobility', norm: 100 },
+  { key: 'flexibility', label: 'Forward-fold flexibility', norm: 100 },
+  { key: 'balanceSec', label: 'Single-leg balance (sec)', norm: 60 },
+  { key: 'armRaises', label: 'Seated arm raises in 30s', norm: 30 },
 ];
+
+// Components of the Fit India Fitness Protocol that ATHLORA's camera tests cover.
+// (Body composition / BMI is part of the protocol but ATHLORA deliberately collects no body measurements.)
+const FIT_INDIA_COMPONENTS = [
+  { key: 'muscular', label: 'Muscular endurance', tests: ['pushups', 'squats', 'armRaises'] },
+  { key: 'core', label: 'Core strength', tests: ['plankSec'] },
+  { key: 'cardio', label: 'Cardiovascular endurance', tests: ['jumpingJacks'] },
+  { key: 'flexibility', label: 'Flexibility', tests: ['flexibility', 'mobility'] },
+  { key: 'balance', label: 'Balance', tests: ['balanceSec'] },
+];
+
+function band(score) {
+  return score < 40 ? 'Needs work' : score < 60 ? 'Fair' : score < 80 ? 'Good' : 'Excellent';
+}
+
+function fitIndiaReport(results) {
+  if (!results) return null;
+  return FIT_INDIA_COMPONENTS.map((c) => {
+    const scores = c.tests
+      .map((k) => TESTS.find((t) => t.key === k))
+      .filter((t) => typeof results[t.key] === 'number')
+      .map((t) => Math.min(100, (results[t.key] / t.norm) * 100));
+    if (!scores.length) return { key: c.key, label: c.label, measured: false };
+    const score = Math.round(scores.reduce((a, b) => a + b, 0) / scores.length);
+    return { key: c.key, label: c.label, measured: true, score, band: band(score) };
+  });
+}
+
+// ---------- Timetable-aware Opportunity Engine ----------
+const toMin = (hhmm) => {
+  const [h, m] = String(hhmm || '').split(':').map(Number);
+  return Number.isFinite(h) && Number.isFinite(m) ? h * 60 + m : null;
+};
+const fmtMin = (min) => `${String(Math.floor(min / 60)).padStart(2, '0')}:${String(min % 60).padStart(2, '0')}`;
+
+/**
+ * Finds today's realistic movement windows from the class timetable.
+ * @param tt            { dayStart: 'HH:MM', dayEnd: 'HH:MM', classes: [{ day: 0-6 (Sun=0), start, end, title }] }
+ * @param day           today's weekday (Sun=0)
+ * @param nowMin        minutes since local midnight
+ * @param completedMins minute-of-day of each mission completed today
+ */
+function findOpportunities(tt, day, nowMin, completedMins = []) {
+  if (!tt) return [];
+  const classes = (tt.classes || [])
+    .filter((c) => c.day === day)
+    .map((c) => ({ title: c.title || 'class', s: toMin(c.start), e: toMin(c.end) }))
+    .filter((c) => c.s !== null && c.e !== null && c.e > c.s)
+    .sort((a, b) => a.s - b.s);
+  if (!classes.length) return [];
+
+  const dayStart = toMin(tt.dayStart) ?? 8 * 60;
+  const dayEnd = toMin(tt.dayEnd) ?? 18 * 60;
+  const ops = [];
+  // buffer = minutes kept free to walk to the next class
+  const addGap = (s, e, environment, label, buffer) => {
+    const minutes = Math.min(20, e - s - buffer);
+    if (minutes < 3) return;
+    ops.push({ start: s, end: s + minutes, minutes, environment, label });
+  };
+
+  let cursor = Math.min(dayStart, classes[0].s);
+  let prev = null;
+  for (const c of classes) {
+    if (c.s > cursor) {
+      if (!prev) addGap(Math.max(cursor, c.s - 30), c.s, 'hostel', `Before ${c.title}`, 5);
+      else addGap(cursor, c.s, 'campus', `Between ${prev.title} and ${c.title}`, 2);
+    }
+    // Long lectures get a quiet 2-minute classroom reset halfway through
+    if (c.e - c.s >= 75) {
+      const mid = c.s + Math.floor((c.e - c.s) / 2) - 1;
+      ops.push({ start: mid, end: mid + 2, minutes: 2, environment: 'classroom', label: `Mid-${c.title} reset` });
+    }
+    cursor = Math.max(cursor, c.e);
+    prev = c;
+  }
+  if (dayEnd > cursor) addGap(cursor + 10, dayEnd, 'hostel', 'After classes', 0);
+
+  return ops
+    .sort((a, b) => a.start - b.start)
+    .map((op) => {
+      const done = completedMins.some((t) => t >= op.start - 5 && t <= op.end + 15);
+      const status = done ? 'done' : nowMin > op.end ? 'missed' : nowMin >= op.start ? 'now' : 'upcoming';
+      return { ...op, from: fmtMin(op.start), to: fmtMin(op.end), status };
+    });
+}
 
 function levelFromAssessment(results) {
   const scores = TESTS.filter((t) => typeof results[t.key] === 'number')
@@ -284,6 +409,7 @@ function fitnessGrowth(baseline, latest) {
 }
 
 module.exports = {
-  LEVELS, ENVIRONMENTS, EQUIPMENT, GOALS, TESTS,
+  LEVELS, ENVIRONMENTS, EQUIPMENT, GOALS, TESTS, FIT_INDIA_COMPONENTS,
   generateMission, scoreMission, levelFromAssessment, fitnessGrowth,
+  fitIndiaReport, findOpportunities, toMin,
 };

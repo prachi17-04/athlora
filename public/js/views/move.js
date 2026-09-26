@@ -72,7 +72,7 @@ export async function render(el, app) {
           <div class="row wrap mt-8">
             <span class="tag">${esc(ENV_LABEL[m.environment] || m.environment)}</span>
             <span class="tag">${esc(m.level)}</span>
-            ${m.lowImpact ? '<span class="tag warn">Low-impact (health)</span>' : ''}
+            ${m.adaptive ? '<span class="tag lime">Seated mode</span>' : m.lowImpact ? '<span class="tag warn">Low-impact (health)</span>' : ''}
             ${m.comeback ? '<span class="tag warn">Easy restart</span>' : ''}
           </div>
           <div class="move-list">
@@ -154,8 +154,10 @@ export async function render(el, app) {
       const r = await openTracker({ type: it.cv, title: it.name, target: it.target });
       if (!r) return;
       if (!r.achieved) return toast('No reps detected. Try again or tap "Done without camera".', true);
+      const result = { done: true, verified: r.verified, achieved: r.achieved, formScore: r.form?.score ?? null, formTip: r.form?.tip ?? null };
+      if (r.form) return showForm(it, r, result);
       if (r.achieved < it.target) toast(`Verified ${r.achieved}/${it.target} — partial credit`);
-      next({ done: true, verified: r.verified, achieved: r.achieved });
+      next(result);
     });
 
     el.querySelector('#timerBtn')?.addEventListener('click', (e) => {
@@ -177,6 +179,26 @@ export async function render(el, app) {
         }
       }, 1000);
     });
+  }
+
+  // After a camera-verified move: show the AI form score and one coaching tip
+  function showForm(it, r, result) {
+    const f = r.form;
+    const color = f.score >= 80 ? 'var(--accent)' : f.score >= 60 ? 'var(--warn)' : 'var(--danger)';
+    el.innerHTML = `
+      <div class="stack center">
+        <div class="upper mt-16">${esc(it.name)} · verified ✓</div>
+        <div class="big-xp" style="color:${color}">${f.score}</div>
+        <div class="muted">Form quality / 100</div>
+        <section class="card" style="text-align:left">
+          <div class="row between"><span class="muted">Counted</span><b>${r.achieved}${it.unit === 'sec' ? ' s' : ''} / ${it.target}${it.unit === 'sec' ? ' s' : ''}</b></div>
+          <div class="row between mt-8"><span class="muted">Reps analysed</span><b>${f.reps}</b></div>
+          <p class="mt-16"><b>Coach tip:</b> ${esc(f.tip)}</p>
+          ${f.score >= 80 ? '<p class="small accent mt-8">Good form bonus unlocked for this move (+20% XP).</p>' : '<p class="small muted mt-8">Score 80+ earns a good form bonus.</p>'}
+        </section>
+        <button class="btn primary block" id="cont">Continue</button>
+      </div>`;
+    el.querySelector('#cont').onclick = () => next(result);
   }
 
   async function complete() {
@@ -205,10 +227,11 @@ export async function render(el, app) {
         <section class="card" style="text-align:left">
           ${reward.breakdown.filter((b) => b.xp).map((b) => `<div class="reward-line"><span>${esc(b.label)}</span><b class="accent">+${b.xp}</b></div>`).join('')}
         </section>
-        <div class="grid-3">
+        <div class="grid-2">
           <div class="stat"><div class="v">${reward.activeMin}</div><div class="l">active min</div></div>
           <div class="stat"><div class="v">${reward.verifiedCount}</div><div class="l">verified moves</div></div>
           <div class="stat"><div class="v">${stats.streak}</div><div class="l">day streak</div></div>
+          <div class="stat"><div class="v">${reward.formAvg ?? '—'}</div><div class="l">avg form score</div></div>
         </div>
         ${mission.followUp ? `<button class="btn ghost block" id="follow">Set up: ${esc(mission.followUp.text)}</button>` : ''}
         <button class="btn primary block" id="home">Back to dashboard</button>

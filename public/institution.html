@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ATHLORA · Institution Dashboard</title>
+  <meta name="theme-color" content="#0a0e13" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .inst { max-width: 960px; margin: 0 auto; padding: calc(18px + var(--safe-t)) 16px calc(40px + var(--safe-b)); }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+    .insight { padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--card-2); border-radius: 10px; }
+    #toast { bottom: calc(24px + var(--safe-b)); }
+  </style>
+</head>
+<body>
+  <div class="inst" id="root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/js/institution.js"></script>
+</body>
+</html>

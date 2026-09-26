@@ -41,7 +41,31 @@ function publicUser(u) {
     medical: u.medical ?? null, sports: u.sports ?? null,
     onboarded: Boolean(u.onboarded), campus: u.campus || '',
     profile: u.profile, createdAt: u.createdAt,
+    timetable: u.timetable || { dayStart: '08:00', dayEnd: '18:00', classes: [] },
+    hasBuddy: Boolean(u.buddy),
   };
+}
+
+// Local weekday (Sun=0) and minute-of-day for the student's timezone
+function localNow(offset, ts = Date.now()) {
+  const d = new Date(ts - offset * 60000);
+  return { day: d.getUTCDay(), min: d.getUTCHours() * 60 + d.getUTCMinutes() };
+}
+
+function movedOn(user, day, offset) {
+  return (user.activities || []).some((a) => dayKey(a.completedAt, offset) === day);
+}
+
+// Consecutive days (ending today, or yesterday) on which BOTH students completed a mission
+function sharedStreak(a, b, offset) {
+  const today = dayKey(Date.now(), offset);
+  const days = (u) => new Set((u.activities || []).map((x) => dayKey(x.completedAt, offset)));
+  const da = days(a), db = days(b);
+  const both = (k) => da.has(k) && db.has(k);
+  let cursor = both(today) ? today : shiftDay(today, -1);
+  let n = 0;
+  while (both(cursor)) { n++; cursor = shiftDay(cursor, -1); }
+  return n;
 }
 
 function cleanMedical(m) {
@@ -103,7 +127,14 @@ function computeStats(user, offset) {
   const levelCeil = 50 * level ** 2;
 
   const todayStats = byDay[today] || { missions: 0, activeMin: 0, xp: 0 };
+  const recentForm = acts.filter((a) => typeof a.formAvg === 'number' && now - a.completedAt < 14 * DAY_MS);
   return {
+    form: {
+      avg14: recentForm.length ? Math.round(recentForm.reduce((s, a) => s + a.formAvg, 0) / recentForm.length) : null,
+      missions: recentForm.length,
+    },
+    fitIndia: latest ? engine.fitIndiaReport(latest.results) : null,
+    fitIndiaBaseline: baseline && latest && baseline !== latest ? engine.fitIndiaReport(baseline.results) : null,
     today: { ...todayStats, activeMin: Math.round(todayStats.activeMin * 10) / 10, goalMin: 10 },
     streak, bestStreak: best,
     comeback: inactiveDays >= 2, inactiveDays, hasActivity: acts.length > 0,
@@ -234,6 +265,7 @@ function createApp(kv) {
     if (engine.GOALS.includes(b.goal)) u.profile.goal = b.goal;
     if (engine.ENVIRONMENTS.includes(b.environment)) u.profile.environment = b.environment;
     if (Array.isArray(b.equipment)) u.profile.equipment = b.equipment.filter((e) => engine.EQUIPMENT.includes(e));
+    if (typeof b.adaptive === 'boolean') u.profile.adaptive = b.adaptive;
     if (typeof b.name === 'string' && clean(b.name).length >= 2) u.name = clean(b.name, 60);
     if (b.medical) u.medical = cleanMedical(b.medical);
     if (b.sports) u.sports = cleanSports(b.sports);
@@ -277,7 +309,13 @@ function createApp(kv) {
     const firstToday = before.today.missions === 0;
     const streakAfter = firstToday ? before.streak + 1 : before.streak;
 
-    const score = engine.scoreMission(mission, results, { firstToday, streakAfter });
+    let buddyMovedToday = false;
+    if (u.buddy) {
+      const buddy = await kv.get(K.user(u.buddy.userId));
+      buddyMovedToday = Boolean(buddy && movedOn(buddy, dayKey(Date.now(), offset), offset));
+    }
+
+    const score = engine.scoreMission(mission, results, { firstToday, streakAfter, buddyMovedToday });
     if (score.doneCount === 0) return res.status(400).json({ error: 'Complete at least one move to finish the mission' });
 
     mission.status = 'completed';
@@ -286,6 +324,7 @@ function createApp(kv) {
       id: uid(), missionId: mission.id, title: mission.title, minutes: mission.minutes,
       environment: mission.environment, comeback: mission.comeback,
       xp: score.xp, activeMin: score.activeMin, verifiedCount: score.verifiedCount, doneCount: score.doneCount,
+      formAvg: score.formAvg,
       completedAt: Date.now(),
     });
     u.xp = (u.xp || 0) + score.xp;
@@ -357,6 +396,236 @@ function createApp(kv) {
       members: members.length, activeMembers,
       totalMin: Math.round(totalMin), goalMin: Math.max(60, members.length * 60),
       missions, myMin: Math.round(myMin * 10) / 10,
+    });
+  }));
+
+  // =============== TIMETABLE-AWARE OPPORTUNITY ENGINE ===============
+  const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+  api.put('/me/timetable', auth, h(async (req, res) => {
+    const b = req.body || {};
+    const dayStart = HHMM.test(b.dayStart) ? b.dayStart : '08:00';
+    const dayEnd = HHMM.test(b.dayEnd) ? b.dayEnd : '18:00';
+    if (engine.toMin(dayEnd) <= engine.toMin(dayStart)) return res.status(400).json({ error: 'Day end must be after day start' });
+    const classes = [];
+    for (const c of Array.isArray(b.classes) ? b.classes.slice(0, 80) : []) {
+      const day = Number(c.day);
+      if (!Number.isInteger(day) || day < 0 || day > 6 || !HHMM.test(c.start) || !HHMM.test(c.end)) continue;
+      if (engine.toMin(c.end) <= engine.toMin(c.start)) return res.status(400).json({ error: `"${clean(c.title, 40) || 'A class'}" ends before it starts` });
+      classes.push({ id: clean(c.id, 40) || uid(), day, start: c.start, end: c.end, title: clean(c.title, 40) || 'Class' });
+    }
+    req.user.timetable = { dayStart, dayEnd, classes };
+    await saveUser(req.user);
+    res.json({ user: publicUser(req.user) });
+  }));
+
+  api.get('/opportunities', auth, (req, res) => {
+    const u = req.user;
+    const offset = tzOffset(req);
+    const { day, min } = localNow(offset);
+    const today = dayKey(Date.now(), offset);
+    const completedMins = (u.activities || [])
+      .filter((a) => dayKey(a.completedAt, offset) === today)
+      .map((a) => localNow(offset, a.completedAt).min);
+    const configured = Boolean(u.timetable?.classes?.length);
+    const hasClassesToday = configured && u.timetable.classes.some((c) => c.day === day);
+    res.json({
+      configured, hasClassesToday, day, nowMin: min,
+      items: configured ? engine.findOpportunities(u.timetable, day, min, completedMins) : [],
+    });
+  });
+
+  // =============== MOVE BUDDY (shared streak, no comparison) ===============
+  const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  api.post('/buddy/code', auth, h(async (req, res) => {
+    const u = req.user;
+    if (u.buddy) return res.status(400).json({ error: 'You already have a buddy' });
+    const existing = u.buddyCode && await kv.get(`buddycode/${u.buddyCode}`);
+    if (existing && existing.expiresAt > Date.now()) return res.json({ code: u.buddyCode });
+    const code = Array.from({ length: 6 }, () => CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]).join('');
+    await kv.set(`buddycode/${code}`, { userId: u.id, expiresAt: Date.now() + DAY_MS });
+    u.buddyCode = code;
+    await saveUser(u);
+    res.json({ code });
+  }));
+
+  api.post('/buddy/join', auth, h(async (req, res) => {
+    const u = req.user;
+    const code = clean(req.body.code, 10).toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (u.buddy) return res.status(400).json({ error: 'You already have a buddy' });
+    const entry = await kv.get(`buddycode/${code}`);
+    if (!entry || entry.expiresAt < Date.now()) return res.status(400).json({ error: 'That code is invalid or expired' });
+    if (entry.userId === u.id) return res.status(400).json({ error: "That's your own code — share it with a friend" });
+    const other = await kv.get(K.user(entry.userId));
+    if (!other) return res.status(400).json({ error: 'That code is invalid or expired' });
+    if (other.buddy) return res.status(400).json({ error: 'Your friend already has a buddy' });
+    const since = Date.now();
+    u.buddy = { userId: other.id, since };
+    other.buddy = { userId: u.id, since };
+    delete other.buddyCode;
+    delete u.buddyCode;
+    await kv.delete(`buddycode/${code}`);
+    await saveUser(other);
+    await saveUser(u);
+    res.json({ ok: true });
+  }));
+
+  api.get('/buddy', auth, h(async (req, res) => {
+    const u = req.user;
+    if (!u.buddy) return res.json({ buddy: null, code: u.buddyCode || null });
+    const other = await kv.get(K.user(u.buddy.userId));
+    if (!other || other.buddy?.userId !== u.id) return res.json({ buddy: null, code: null });
+    const offset = tzOffset(req);
+    const today = dayKey(Date.now(), offset);
+    // Only what a buddy needs: first name, moved today or not, the shared streak
+    res.json({
+      buddy: {
+        name: String(other.name || '').split(' ')[0],
+        movedToday: movedOn(other, today, offset),
+        meMovedToday: movedOn(u, today, offset),
+        sharedStreak: sharedStreak(u, other, offset),
+        since: u.buddy.since,
+      },
+    });
+  }));
+
+  api.delete('/buddy', auth, h(async (req, res) => {
+    const u = req.user;
+    if (u.buddy) {
+      const other = await kv.get(K.user(u.buddy.userId));
+      if (other && other.buddy?.userId === u.id) { delete other.buddy; await saveUser(other); }
+      delete u.buddy;
+      await saveUser(u);
+    }
+    res.json({ ok: true });
+  }));
+
+  // =============== INSTITUTION DASHBOARD (anonymized, for PE departments) ===============
+  const MIN_GROUP = 5; // never show breakdowns for fewer students than this
+  const instKey = (campus) => `institution/${sha(campusKey(campus))}`;
+
+  async function checkInstitution(req, res) {
+    const campus = clean(req.body.campus, 80);
+    const pin = String(req.body.pin || '');
+    if (!campusKey(campus)) { res.status(400).json({ error: 'Enter the campus name' }); return null; }
+    const inst = await kv.get(instKey(campus));
+    if (!inst) { res.status(404).json({ error: 'This campus has no institution dashboard yet. Claim it first.' }); return null; }
+    if (inst.pinHash !== hmac('inst:' + campusKey(campus) + ':' + pin)) { res.status(403).json({ error: 'Wrong PIN' }); return null; }
+    return { campus, inst };
+  }
+
+  api.post('/institution/claim', rateLimit, h(async (req, res) => {
+    const campus = clean(req.body.campus, 80);
+    const pin = String(req.body.pin || '');
+    if (!campusKey(campus)) return res.status(400).json({ error: 'Enter the campus name' });
+    if (pin.length < 6) return res.status(400).json({ error: 'Choose a PIN of at least 6 characters' });
+    if (await kv.get(instKey(campus))) return res.status(409).json({ error: 'This campus dashboard is already claimed. Ask your PE department for the PIN.' });
+    await kv.set(instKey(campus), { name: campus, pinHash: hmac('inst:' + campusKey(campus) + ':' + pin), createdAt: Date.now() });
+    res.json({ ok: true });
+  }));
+
+  api.post('/institution/stats', rateLimit, h(async (req, res) => {
+    const ok = await checkInstitution(req, res);
+    if (!ok) return;
+    const offset = tzOffset(req);
+    const now = Date.now();
+    const today = dayKey(now, offset);
+    const dow = (new Date(today + 'T00:00:00Z').getUTCDay() + 6) % 7;
+    const weekStart = shiftDay(today, -dow);
+
+    const prefix = K.campusPrefix(ok.campus);
+    const ids = (await kv.list(prefix)).map((k) => k.slice(prefix.length));
+    const members = (await Promise.all(ids.map((id) => kv.get(K.user(id)))))
+      .filter((m) => m && campusKey(m.campus) === campusKey(ok.campus));
+
+    const base = { campus: ok.inst.name, members: members.length, minGroup: MIN_GROUP };
+    if (members.length < MIN_GROUP) return res.json({ ...base, tooSmall: true });
+
+    const acts28 = members.flatMap((m) => (m.activities || []).filter((a) => now - a.completedAt < 28 * DAY_MS));
+    const weekActs = acts28.filter((a) => dayKey(a.completedAt, offset) >= weekStart);
+    const activeThisWeek = new Set(members.filter((m) => (m.activities || []).some((a) => dayKey(a.completedAt, offset) >= weekStart)).map((m) => m.id));
+
+    // 4-week trend (oldest first)
+    const trend = [3, 2, 1, 0].map((w) => {
+      const from = shiftDay(weekStart, -7 * w);
+      const to = shiftDay(from, 7);
+      const acts = members.flatMap((m) => (m.activities || []).filter((a) => { const k = dayKey(a.completedAt, offset); return k >= from && k < to; }));
+      return { weekStart: from, activeMin: Math.round(acts.reduce((s, a) => s + a.activeMin, 0)), missions: acts.length };
+    });
+
+    // When students move: weekday (Mon=0) x 3-hour slot from 06:00, last 28 days
+    const SLOTS = ['06–09', '09–12', '12–15', '15–18', '18–21', '21–24'];
+    const heat = Array.from({ length: 7 }, () => Array(SLOTS.length).fill(0));
+    for (const a of acts28) {
+      const { day, min } = localNow(offset, a.completedAt);
+      const slot = Math.floor(min / 180) - 2;
+      if (slot >= 0 && slot < SLOTS.length) heat[(day + 6) % 7][slot]++;
+    }
+
+    const envCounts = {};
+    for (const a of acts28) envCounts[a.environment] = (envCounts[a.environment] || 0) + 1;
+    const levels = { beginner: 0, intermediate: 0, advanced: 0 };
+    for (const m of members) if (levels[m.profile?.fitnessLevel] !== undefined) levels[m.profile.fitnessLevel]++;
+
+    const growths = members.map((m) => {
+      const as = [...(m.assessments || [])].sort((a, b) => a.createdAt - b.createdAt);
+      return as.length >= 2 ? engine.fitnessGrowth(as[0], as[as.length - 1]) : null;
+    }).filter(Boolean);
+
+    const fitIndia = engine.FIT_INDIA_COMPONENTS.map((c) => {
+      const scores = members.map((m) => {
+        const as = [...(m.assessments || [])].sort((a, b) => a.createdAt - b.createdAt);
+        const rep = as.length ? engine.fitIndiaReport(as[as.length - 1].results) : null;
+        return rep?.find((r) => r.key === c.key && r.measured)?.score;
+      }).filter((s) => typeof s === 'number');
+      return { key: c.key, label: c.label, students: scores.length, avg: scores.length ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : null };
+    });
+
+    const verifiedMoves = acts28.reduce((s, a) => s + (a.verifiedCount || 0), 0);
+    const doneMoves = acts28.reduce((s, a) => s + (a.doneCount || 0), 0);
+    const forms = acts28.filter((a) => typeof a.formAvg === 'number');
+
+    // Rule-based suggestions for the PE department
+    const insights = [];
+    const inactiveShare = Math.round(((members.length - activeThisWeek.size) / members.length) * 100);
+    if (inactiveShare >= 30) insights.push(`${inactiveShare}% of students haven't moved with ATHLORA this week. A short campus challenge or class-time movement break could re-engage them.`);
+    let low = null;
+    for (let d = 0; d < 5; d++) for (let s = 1; s <= 3; s++) if (!low || heat[d][s] < low.v) low = { d, s, v: heat[d][s] };
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    if (low && acts28.length >= 10) insights.push(`Least movement on weekdays: ${DAYS[low.d]} ${SLOTS[low.s]}. That's a good slot for a scheduled walk or stretch break.`);
+    const measured = fitIndia.filter((c) => c.avg !== null && c.students >= MIN_GROUP);
+    if (measured.length) {
+      const weakest = measured.reduce((a, b) => (b.avg < a.avg ? b : a));
+      insights.push(`Weakest Fit India component across students: ${weakest.label} (avg ${weakest.avg}/100). Consider focusing PE sessions on it.`);
+    }
+    if (forms.length >= 10) {
+      const avgForm = Math.round(forms.reduce((s, a) => s + a.formAvg, 0) / forms.length);
+      if (avgForm < 70) insights.push(`Average exercise form is ${avgForm}/100. A short technique session on squats and push-ups would help.`);
+    }
+
+    res.json({
+      ...base,
+      tooSmall: false,
+      week: {
+        start: weekStart,
+        activeStudents: activeThisWeek.size,
+        activeShare: Math.round((activeThisWeek.size / members.length) * 100),
+        avgMinPerStudent: Math.round((weekActs.reduce((s, a) => s + a.activeMin, 0) / members.length) * 10) / 10,
+        missions: weekActs.length,
+      },
+      last28: {
+        missions: acts28.length,
+        verifiedShare: doneMoves ? Math.round((verifiedMoves / doneMoves) * 100) : 0,
+        avgForm: forms.length ? Math.round(forms.reduce((s, a) => s + a.formAvg, 0) / forms.length) : null,
+        comebacks: acts28.filter((a) => a.comeback).length,
+        environments: envCounts,
+      },
+      trend, heat: { slots: SLOTS, rows: heat },
+      levels,
+      growth: growths.length >= MIN_GROUP
+        ? { students: growths.length, avgFgi: Math.round(growths.reduce((s, g) => s + g.fgi, 0) / growths.length) }
+        : { students: growths.length, avgFgi: null },
+      fitIndia: fitIndia.map((c) => (c.students >= MIN_GROUP ? c : { ...c, avg: null })),
+      insights,
     });
   }));
 

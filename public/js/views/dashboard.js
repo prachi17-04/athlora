@@ -1,4 +1,68 @@
-import { esc, fmtAgo, chips, bindChips, chipValue, TIME_OPTIONS, ENV_OPTIONS } from '../ui.js';
+import { api } from '../api.js';
+import { esc, fmtAgo, chips, bindChips, chipValue, toast, TIME_OPTIONS, ENV_OPTIONS } from '../ui.js';
+import { remindersEnabled, remindersSupported, enableReminders, disableReminders, scheduleReminders } from '../reminders.js';
+
+const ENV_LABEL = Object.fromEntries(ENV_OPTIONS);
+
+function inMinutes(start, nowMin) {
+  const d = start - nowMin;
+  return d < 60 ? `in ${d} min` : `in ${Math.floor(d / 60)} h ${d % 60 ? (d % 60) + ' min' : ''}`.trim();
+}
+
+// Timetable-aware Opportunity Engine: today's free windows between classes
+function opportunitiesCard(o) {
+  if (!o) return '';
+  if (!o.configured) {
+    return `
+      <section class="card">
+        <div class="row between"><h2>Find my movement windows</h2><span class="tag lime">New</span></div>
+        <p class="muted small mt-8">Add your class timetable once. ATHLORA spots the free gaps between classes, turns each into a Move Mission, and reminds you when it starts.</p>
+        <button class="btn ghost block mt-16" id="addTimetable">Add my timetable</button>
+      </section>`;
+  }
+  if (!o.hasClassesToday) {
+    return `
+      <section class="card">
+        <h2>Today's movement windows</h2>
+        <p class="muted small mt-8">No classes on your timetable today, so any time works. A 10-minute mission is a great start.</p>
+      </section>`;
+  }
+  const next = o.items.find((x) => x.status === 'now') || o.items.find((x) => x.status === 'upcoming');
+  const reminders = remindersEnabled();
+  return `
+    <section class="card">
+      <div class="row between"><h2>Today's movement windows</h2>
+        ${remindersSupported() ? `<button class="btn sm ${reminders ? '' : 'ghost'}" id="remindToggle">${reminders ? '🔔 On' : 'Remind me'}</button>` : ''}
+      </div>
+      <p class="small muted mt-8">${next
+        ? next.status === 'now' ? `<b class="accent">Now:</b> ${esc(next.label)} · ${next.minutes} min free` : `Next window ${inMinutes(next.start, o.nowMin)}: ${esc(next.label)}`
+        : 'All of today\'s windows have passed. See you tomorrow!'}</p>
+      <div class="mt-8">
+        ${o.items.map((op, i) => `
+          <div class="opp ${op.status}">
+            <span class="time">${op.from}</span>
+            <div class="what"><b>${esc(op.label)}</b><span class="tiny muted">${op.minutes} min · ${esc(ENV_LABEL[op.environment] || op.environment)}</span></div>
+            ${op.status === 'done' ? '<span class="tag lime">Done ✓</span>'
+              : op.status === 'missed' ? '<span class="tag">Missed</span>'
+              : `<button class="btn sm ${op.status === 'now' ? 'primary' : 'ghost'}" data-opp="${i}">${op.status === 'now' ? 'START' : 'Go'}</button>`}
+          </div>`).join('')}
+      </div>
+    </section>`;
+}
+
+function buddyCard(b) {
+  if (!b?.buddy) return '';
+  const x = b.buddy;
+  return `
+    <section class="card" id="buddyCard" style="cursor:pointer">
+      <div class="row between">
+        <div><div class="upper">Move buddy</div><b style="font-size:17px">${esc(x.name)}</b></div>
+        <span class="tag ${x.sharedStreak ? 'lime' : ''}">${x.sharedStreak} day shared streak</span>
+      </div>
+      <p class="small muted mt-8">${x.movedToday ? `${esc(x.name)} moved today ✓` : `${esc(x.name)} hasn't moved yet today`} · ${x.meMovedToday ? 'you did ✓' : 'your turn!'}
+        ${x.movedToday && !x.meMovedToday ? '<br/><span class="accent">Move now to earn the +10 XP buddy bonus.</span>' : ''}</p>
+    </section>`;
+}
 
 // The "Today's Consistency" panel lives ONLY on this page by design.
 function consistencyPanel(stats) {
@@ -61,7 +125,11 @@ function comebackCard(stats) {
 
 export async function render(el, app) {
   const { store } = app;
-  const stats = await app.refreshStats();
+  const [stats, opps, buddy] = await Promise.all([
+    app.refreshStats(),
+    api('/opportunities').catch(() => null),
+    api('/buddy').catch(() => null),
+  ]);
   const u = store.user;
   stats.userName = u.name.split(' ')[0];
   const hour = new Date().getHours();
@@ -78,6 +146,10 @@ export async function render(el, app) {
       ${comebackCard(stats)}
 
       ${consistencyPanel(stats)}
+
+      ${opportunitiesCard(opps)}
+
+      ${buddyCard(buddy)}
 
       <section class="card hero">
         <h2>How much time do you have?</h2>
@@ -132,5 +204,24 @@ export async function render(el, app) {
     app.navigate('move');
   });
   el.querySelector('#goSetup')?.addEventListener('click', () => app.navigate('setup'));
+  el.querySelector('#addTimetable')?.addEventListener('click', () => { store.scrollTo = 'timetable'; app.navigate('setup'); });
+  el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('campus'));
+  el.querySelectorAll('[data-opp]').forEach((b) => b.addEventListener('click', () => {
+    const op = opps.items[Number(b.dataset.opp)];
+    // A window that's already open only has the remaining minutes left
+    const left = op.status === 'now' ? Math.max(2, op.end - opps.nowMin) : op.minutes;
+    store.missionRequest = { minutes: Math.min(op.minutes, left), environment: op.environment };
+    app.navigate('move');
+  }));
+  el.querySelector('#remindToggle')?.addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    try {
+      if (remindersEnabled()) { disableReminders(); toast('Reminders off'); }
+      else { await enableReminders(); toast("Reminders on — we'll nudge you when a window starts"); }
+    } catch (err) { toast(err.message, true); }
+    btn.textContent = remindersEnabled() ? '🔔 On' : 'Remind me';
+    btn.classList.toggle('ghost', !remindersEnabled());
+  });
+  if (opps) scheduleReminders(opps);
   el.querySelector('#fgiTile').onclick = () => app.navigate(stats.baseline ? 'passport' : 'setup');
 }

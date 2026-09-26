@@ -2,8 +2,34 @@ import { esc, fmtDate } from '../ui.js';
 
 const TEST_LABELS = {
   squats: 'Squats (30s)', pushups: 'Push-ups (30s)', jumpingJacks: 'Jumping jacks (30s)',
-  plankSec: 'Plank hold (s)', mobility: 'Mobility score',
+  plankSec: 'Plank hold (s)', mobility: 'Mobility score', flexibility: 'Forward-fold reach',
+  balanceSec: 'Single-leg balance (s)', armRaises: 'Seated arm raises (30s)',
 };
+
+const BAND_COLOR = { 'Needs work': 'var(--danger)', Fair: 'var(--warn)', Good: 'var(--blue)', Excellent: 'var(--accent)' };
+
+// Fit India Fitness Protocol component report, from the latest AI assessment
+function fitIndiaCard(s) {
+  if (!s.fitIndia) return '';
+  const before = Object.fromEntries((s.fitIndiaBaseline || []).map((c) => [c.key, c]));
+  return `
+    <section class="card">
+      <div class="row between"><div class="upper">Fit India Fitness Protocol</div><span class="tag">auto-measured</span></div>
+      <p class="small muted mt-8">Your camera tests mapped to the protocol's fitness components.</p>
+      <div class="stack mt-16" style="gap:14px">
+        ${s.fitIndia.map((c) => c.measured ? `
+          <div>
+            <div class="row between small"><span>${c.label}</span>
+              <span class="row" style="gap:8px"><b>${c.score}</b><span class="tag" style="color:${BAND_COLOR[c.band]}">${c.band}</span></span>
+            </div>
+            <div class="bar mt-8"><div style="width:${c.score}%"></div></div>
+            ${before[c.key]?.measured ? `<p class="tiny muted mt-8">Baseline ${before[c.key].score} → now ${c.score} (${c.score - before[c.key].score >= 0 ? '+' : ''}${c.score - before[c.key].score})</p>` : ''}
+          </div>` : `
+          <div class="row between small"><span class="muted">${c.label}</span><span class="tiny muted">Not measured yet</span></div>`).join('')}
+      </div>
+      <p class="tiny muted mt-16">Covers the Fit India Fitness Protocol components that a phone camera can measure. Scores (0–100) and bands are ATHLORA's own indicative ratings, not official protocol norms. Body composition (BMI) is part of the protocol, but ATHLORA doesn't collect body measurements.</p>
+    </section>`;
+}
 
 // Bar path with 4px rounded top corners, square at the baseline
 function barPath(x, y, w, h, r = 4) {
@@ -87,6 +113,8 @@ export async function render(el, app) {
     ['↺', 'Comeback', s.totals.comebacks >= 1],
     ['10', '10 missions', s.totals.missions >= 10],
     ['60', '60 active min', s.totals.activeMin >= 60],
+    ['★', 'Great form (80+)', (s.form.avg14 ?? 0) >= 80],
+    ['FI', 'All 5 Fit India areas', Boolean(s.fitIndia && s.fitIndia.every((c) => c.measured))],
   ];
 
   el.innerHTML = `
@@ -121,6 +149,8 @@ export async function render(el, app) {
             <button class="btn sm primary" id="toSetup">Go to AI Setup</button></div>`}
       </section>
 
+      ${fitIndiaCard(s)}
+
       <section class="card">
         <div class="row between"><h3>Active minutes · last 14 days</h3></div>
         <p class="small muted mt-8" id="chartReadout">${anyActivity ? 'Tap a bar for details' : '&nbsp;'}</p>
@@ -135,6 +165,11 @@ export async function render(el, app) {
         <div class="stat"><div class="v">${s.totals.activeMin}</div><div class="l">Active minutes</div></div>
         <div class="stat"><div class="v">${s.totals.verifiedMoves}</div><div class="l">Camera-verified moves</div></div>
         <div class="stat"><div class="v">${s.bestStreak}</div><div class="l">Best streak (days)</div></div>
+        <div class="stat" style="grid-column:1/-1">
+          <div class="row between"><div><div class="v">${s.form.avg14 ?? '—'}${s.form.avg14 !== null ? '<span class="small muted"> / 100</span>' : ''}</div>
+          <div class="l">AI form quality · last 14 days</div></div>
+          <span class="tiny muted" style="max-width:55%;text-align:right">${s.form.avg14 !== null ? `from ${s.form.missions} camera-verified mission${s.form.missions === 1 ? '' : 's'}` : 'Verify moves with the camera to get form scores'}</span></div>
+        </div>
       </div>
 
       <div class="section-title">Badges</div>
@@ -145,6 +180,7 @@ export async function render(el, app) {
       <div class="section-title">Account</div>
       <section class="card">
         <div class="row between small"><span class="muted">Email</span><span>${esc(u.email)}</span></div>
+        <p class="tiny muted mt-16">🔒 Privacy: camera analysis runs on your device and video is never uploaded. Your campus and PE department only ever see anonymous totals, never your name.</p>
         <button class="btn danger block mt-16" id="logout">Log out</button>
       </section>
     </div>`;

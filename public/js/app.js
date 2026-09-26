@@ -74,7 +74,15 @@ export function updateLevelTag() {
 
 async function route() {
   if (!document.getElementById('view')) return;
-  const name = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'dashboard';
+  const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
+  const name = path || 'dashboard';
+  // Mission links from opportunity reminders: #/move?min=12&env=campus
+  if (name === 'move' && query) {
+    const q = new URLSearchParams(query);
+    const min = Number(q.get('min'));
+    if (min > 0) store.missionRequest = { minutes: min, environment: q.get('env') || undefined };
+    history.replaceState(null, '', '#/move');
+  }
   const view = ROUTES[name] || dashboard;
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (ROUTES[name] ? name : 'dashboard')));
   if (typeof cleanup === 'function') cleanup();

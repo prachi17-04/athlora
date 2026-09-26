@@ -18,6 +18,12 @@ One codebase runs as a **website** and as an **installable phone app** (a Progre
 | **Comeback mode** ("You were inactive for N days, restart with a 4-min mission") | Dashboard |
 | **Campus challenge**: a shared weekly goal with no rankings | Campus tab |
 | Progress visualisation, badges, Fitness Passport | Passport tab |
+| **Timetable-aware Opportunity Engine**: finds free gaps between classes, adds mid-lecture resets in long lectures, and reminds you when a window starts | AI Setup → Class timetable; Dashboard |
+| **AI form-quality score** per rep (depth, tempo, symmetry, body line), with a coaching tip and a +20% XP bonus at 80+ | Move → Verify with camera |
+| **Fit India Fitness Protocol alignment**: camera tests cover muscular endurance, core, cardio, flexibility (forward fold) and balance (single-leg stand) | AI Setup; Passport |
+| **Institution dashboard** for PE departments: anonymous trends, when-students-move heatmap, Fit India averages, suggestions (needs 5+ students) | `/institution.html` (linked from Campus) |
+| **Seated / adaptive mode**: chair- and wheelchair-friendly missions and a seated arm-raise test | AI Setup → Movement mode |
+| **Move buddy**: a shared streak with one friend, plus +10 XP when you both move the same day | Campus tab |
 
 The bottom navigation holds Dashboard, AI Setup, Move, Passport, and Campus.
 There is **no dummy data**. Every number comes from real missions and assessments.
@@ -111,6 +117,8 @@ athlora/
    └─ js/
       ├─ app.js          router + bottom navigation
       ├─ onboarding.js   name → email → age → medical → sports
-      ├─ tracker.js      computer-vision rep counter
+      ├─ tracker.js      computer-vision rep counter + form-quality scoring
+      ├─ reminders.js    opportunity reminders (notifications)
+      ├─ institution.js  PE department dashboard (public/institution.html)
       └─ views/          dashboard, move, setup (AI Setup), passport, campus
 ```

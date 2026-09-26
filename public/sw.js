@@ -1,11 +1,12 @@
 // ATHLORA service worker: makes the app installable and loads the shell offline.
-const CACHE = 'athlora-v1';
+const CACHE = 'athlora-v2';
 const SHELL = [
   '/', '/index.html', '/css/styles.css', '/manifest.webmanifest',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
-  '/js/app.js', '/js/api.js', '/js/ui.js', '/js/onboarding.js', '/js/tracker.js',
+  '/js/app.js', '/js/api.js', '/js/ui.js', '/js/onboarding.js', '/js/tracker.js', '/js/reminders.js',
   '/js/views/dashboard.js', '/js/views/move.js', '/js/views/setup.js',
   '/js/views/passport.js', '/js/views/campus.js',
+  '/institution.html', '/js/institution.js',
 ];
 
 self.addEventListener('install', (e) => {
@@ -17,6 +18,21 @@ self.addEventListener('activate', (e) => {
     caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
+});
+
+// Tapping an opportunity reminder opens (or focuses) ATHLORA on the suggested mission
+self.addEventListener('notificationclick', (e) => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/#/dashboard';
+  e.waitUntil((async () => {
+    const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const client = all.find((c) => new URL(c.url).origin === location.origin);
+    if (client) {
+      await client.focus();
+      return client.navigate(url);
+    }
+    return self.clients.openWindow(url);
+  })());
 });
 
 self.addEventListener('fetch', (e) => {

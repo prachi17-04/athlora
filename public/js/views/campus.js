@@ -1,13 +1,84 @@
 import { api } from '../api.js';
 import { esc, toast } from '../ui.js';
 
+// Move buddy: two friends share one streak. Social motivation without any comparison.
+function buddySection(b) {
+  if (b?.buddy) {
+    const x = b.buddy;
+    return `
+      <div class="section-title">Move buddy</div>
+      <section class="card">
+        <div class="row between"><h2>${esc(x.name)}</h2><span class="tag ${x.sharedStreak ? 'lime' : ''}">${x.sharedStreak} day shared streak</span></div>
+        <div class="grid-2 mt-16">
+          <div class="stat"><div class="v" style="font-size:18px">${x.meMovedToday ? '✓ Done' : 'Not yet'}</div><div class="l">You today</div></div>
+          <div class="stat"><div class="v" style="font-size:18px">${x.movedToday ? '✓ Done' : 'Not yet'}</div><div class="l">${esc(x.name)} today</div></div>
+        </div>
+        <p class="small muted mt-16">The streak grows only on days you <b>both</b> complete a mission. The one who moves second each day gets +10 XP.</p>
+        <button class="link mt-16" id="unbuddy" style="color:var(--muted)">Remove buddy</button>
+        <div id="unbuddyConfirm" hidden class="row mt-8">
+          <span class="small">End the buddy link?</span>
+          <button class="btn sm danger" id="unbuddyYes">Yes, remove</button>
+          <button class="btn sm ghost" id="unbuddyNo">Keep</button>
+        </div>
+      </section>`;
+  }
+  return `
+    <div class="section-title">Move buddy</div>
+    <section class="card">
+      <h2>Move with a friend</h2>
+      <p class="muted small mt-8">Pair up with one friend. You share a streak that grows only on days you both move. There's no scoreboard and no comparison, just someone counting on you.</p>
+      <div id="codeArea" class="mt-16">
+        ${b?.code ? `<div class="code-box">${esc(b.code)}</div><p class="tiny muted center mt-8">Share this code with your friend. It's valid for 24 hours.</p>`
+          : '<button class="btn ghost block" id="getCode">Get my buddy code</button>'}
+      </div>
+      <div class="row mt-16">
+        <input class="input sm" id="joinCode" placeholder="Friend's code" maxlength="6" style="text-transform:uppercase" />
+        <button class="btn sm" id="joinBuddy">Join</button>
+      </div>
+    </section>`;
+}
+
 // Collective campus challenge: everyone moves one shared bar. No rankings, no leaderboard.
 export async function render(el, app) {
   const { store } = app;
 
+  function bindBuddy() {
+    el.querySelector('#getCode')?.addEventListener('click', async () => {
+      try {
+        const r = await api('/buddy/code', { method: 'POST' });
+        el.querySelector('#codeArea').innerHTML = `<div class="code-box">${esc(r.code)}</div><p class="tiny muted center mt-8">Share this code with your friend. It's valid for 24 hours.</p>`;
+      } catch (err) { toast(err.message, true); }
+    });
+    el.querySelector('#joinBuddy')?.addEventListener('click', async () => {
+      const code = el.querySelector('#joinCode').value.trim();
+      if (code.length < 6) return toast("Enter your friend's 6-character code", true);
+      try {
+        await api('/buddy/join', { method: 'POST', body: { code } });
+        toast("You're now move buddies!");
+        await draw();
+      } catch (err) { toast(err.message, true); }
+    });
+    el.querySelector('#unbuddy')?.addEventListener('click', () => { el.querySelector('#unbuddyConfirm').hidden = false; });
+    el.querySelector('#unbuddyNo')?.addEventListener('click', () => { el.querySelector('#unbuddyConfirm').hidden = true; });
+    el.querySelector('#unbuddyYes')?.addEventListener('click', async () => {
+      try { await api('/buddy', { method: 'DELETE' }); toast('Buddy removed'); await draw(); } catch (err) { toast(err.message, true); }
+    });
+  }
+
+  const institutionLink = `
+    <a class="card" href="/institution.html" style="display:block;text-decoration:none;color:inherit">
+      <div class="row between"><div><div class="upper">For PE departments</div><b>Institution dashboard →</b></div></div>
+      <p class="tiny muted mt-8">Anonymous campus-wide insights: activity trends, when students move, Fit India component averages. No names, ever.</p>
+    </a>`;
+
   async function draw() {
-    const c = await api('/campus');
-    if (!c.campus) return drawJoin();
+    const [c, buddy] = await Promise.all([api('/campus'), api('/buddy').catch(() => null)]);
+    if (!c.campus) {
+      drawJoin();
+      el.querySelector('.stack').insertAdjacentHTML('beforeend', buddySection(buddy) + institutionLink);
+      bindBuddy();
+      return;
+    }
 
     const pct = Math.min(100, Math.round((c.totalMin / c.goalMin) * 100));
     const myShare = c.totalMin > 0 ? Math.round((c.myMin / c.totalMin) * 100) : 0;
@@ -48,9 +119,12 @@ export async function render(el, app) {
 
         <p class="small muted center">Invite classmates: they join by entering the same campus name.</p>
         <button class="link" id="change" style="color:var(--muted)">Change campus</button>
+        ${buddySection(buddy)}
+        ${institutionLink}
       </div>`;
     el.querySelector('#move').onclick = () => app.navigate('move');
     el.querySelector('#change').onclick = () => drawJoin(c.campus);
+    bindBuddy();
   }
 
   function drawJoin(existing = '') {

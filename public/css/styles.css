@@ -282,6 +282,33 @@ h1, h2, h3, p { margin: 0; }
 }
 .tracker .timer { font-size: 22px; font-weight: 700; color: #fff; text-align: right; }
 
+.form-chip {
+  display: inline-block; margin-top: 8px; padding: 5px 10px; border-radius: 999px;
+  font-weight: 700; font-size: 14px; background: rgba(0,0,0,.55); color: #fff;
+}
+.form-chip.good { color: var(--accent); }
+.form-chip.ok { color: var(--warn); }
+.form-chip.low { color: var(--danger); }
+
+/* ---------- opportunities & timetable ---------- */
+.opp { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.opp:last-child { border-bottom: 0; }
+.opp .time { font-variant-numeric: tabular-nums; font-weight: 700; width: 52px; flex: none; }
+.opp .what { flex: 1; min-width: 0; }
+.opp .what b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.opp.missed, .opp.done { opacity: .5; }
+.opp.now { background: var(--accent-soft); margin: 0 -16px; padding: 10px 16px; border-radius: 12px; border-bottom-color: transparent; }
+.tt-row { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.tt-row:last-child { border-bottom: 0; }
+.tt-form { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tt-form .full { grid-column: 1 / -1; }
+.input.sm { padding: 10px 12px; font-size: 15px; border-radius: 12px; }
+.code-box { font-family: ui-monospace, Consolas, monospace; font-size: 30px; letter-spacing: .3em; font-weight: 700; color: var(--accent); text-align: center; padding: 12px; background: var(--card-2); border-radius: 14px; }
+.heat { border-collapse: separate; border-spacing: 3px; width: 100%; font-size: 11px; }
+.heat td { height: 26px; border-radius: 6px; text-align: center; color: var(--text); }
+.heat th { color: var(--muted); font-weight: 500; padding: 0 4px; }
+.table-wrap { overflow-x: auto; }
+
 /* ---------- passport ---------- */
 .passport {
   border-radius: 22px; padding: 20px; position: relative; overflow: hidden;
