@@ -224,6 +224,13 @@ export async function render(el, app) {
         <div class="upper mt-16">Mission complete</div>
         <div class="big-xp">+${reward.xp}</div>
         <div class="muted">Fitness XP</div>
+        <section class="card streak-banner on" style="text-align:left;align-items:center">
+          <div class="streak-num"><b>${stats.streak}</b><span>day${stats.streak === 1 ? '' : 's'}</span></div>
+          <div>
+            <h2 style="font-size:18px">🔥 Let's go! ${stats.streak}-day streak!</h2>
+            <p class="small muted mt-8">${stats.streak === 1 ? 'Day 1 done. Come back tomorrow for day 2!' : `You've moved ${stats.streak} days in a row. See you tomorrow for day ${stats.streak + 1}!`}</p>
+          </div>
+        </section>
         <section class="card" style="text-align:left">
           ${reward.breakdown.filter((b) => b.xp).map((b) => `<div class="reward-line"><span>${esc(b.label)}</span><b class="accent">+${b.xp}</b></div>`).join('')}
         </section>

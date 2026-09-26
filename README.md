@@ -16,16 +16,18 @@ One codebase runs as a **website** and as an **installable phone app** (a Progre
 | **AI Fitness Baseline** (camera assessment → fitness level + mobility score) | AI Setup tab |
 | **Fitness Growth Index (FGI)**: % improvement against your own baseline | Passport tab |
 | **Comeback mode** ("You were inactive for N days, restart with a 4-min mission") | Dashboard |
-| **Campus challenge**: a shared weekly goal with no rankings | Campus tab |
+| **Community challenge**: a shared weekly goal for a college, class, hostel or club, with no rankings | Community tab |
 | Progress visualisation, badges, Fitness Passport | Passport tab |
 | **Timetable-aware Opportunity Engine**: finds free gaps between classes, adds mid-lecture resets in long lectures, and reminds you when a window starts | AI Setup → Class timetable; Dashboard |
 | **AI form-quality score** per rep (depth, tempo, symmetry, body line), with a coaching tip and a +20% XP bonus at 80+ | Move → Verify with camera |
 | **Fit India Fitness Protocol alignment**: camera tests cover muscular endurance, core, cardio, flexibility (forward fold) and balance (single-leg stand) | AI Setup; Passport |
-| **Institution dashboard** for PE departments: anonymous trends, when-students-move heatmap, Fit India averages, suggestions (needs 5+ students) | `/institution.html` (linked from Campus) |
+| **Institution dashboard** for PE departments: anonymous trends, when-students-move heatmap, Fit India averages, suggestions (needs 5+ students) | `/institution.html` (linked from Community) |
 | **Seated / adaptive mode**: chair- and wheelchair-friendly missions and a seated arm-raise test | AI Setup → Movement mode |
-| **Move buddy**: a shared streak with one friend, plus +10 XP when you both move the same day | Campus tab |
+| **Move buddies (unlimited)**: one reusable code, a separate shared streak with each friend, and +10 XP when you move after a buddy on the same day | Community tab |
 
-The bottom navigation holds Dashboard, AI Setup, Move, Passport, and Campus.
+The bottom navigation holds Dashboard, AI Setup, Move, Passport, and Community.
+
+The dashboard opens with a **daily streak banner** ("Let's go! You have a 5-day streak going on!") with the next milestone and a one-tap mission to keep the streak alive.
 There is **no dummy data**. Every number comes from real missions and assessments.
 
 Sign-in uses name and email only, with no verification code. Anyone who knows a student's email can open that account. That's fine for a pilot, but add email verification before storing anything sensitive.

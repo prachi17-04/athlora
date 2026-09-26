@@ -180,7 +180,7 @@ export async function render(el, app) {
       <div class="section-title">Account</div>
       <section class="card">
         <div class="row between small"><span class="muted">Email</span><span>${esc(u.email)}</span></div>
-        <p class="tiny muted mt-16">🔒 Privacy: camera analysis runs on your device and video is never uploaded. Your campus and PE department only ever see anonymous totals, never your name.</p>
+        <p class="tiny muted mt-16">🔒 Privacy: camera analysis runs on your device and video is never uploaded. Your community and PE department only ever see anonymous totals, never your name.</p>
         <button class="btn danger block mt-16" id="logout">Log out</button>
       </section>
     </div>`;

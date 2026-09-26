@@ -1,4 +1,4 @@
-// Institution dashboard for PE departments: anonymous, aggregated campus insights.
+// Institution dashboard for PE departments: anonymous, aggregated community insights.
 import { api } from './api.js';
 import { esc, toast } from './ui.js';
 
@@ -27,23 +27,23 @@ function drawLogin(msg = '') {
     <div class="stack" style="max-width:480px;margin:0 auto">
       <div>
         <div class="upper">Institution dashboard</div>
-        <h1 style="font-size:28px;font-weight:800;margin-top:4px">Campus movement insights</h1>
+        <h1 style="font-size:28px;font-weight:800;margin-top:4px">Community movement insights</h1>
         <p class="muted small mt-8">For PE departments and wellness coordinators. See how active your students are, when they move, and which Fit India fitness components need attention. Everything is anonymous and aggregated. No student names are ever shown.</p>
       </div>
       <section class="card">
         <h3>Open dashboard</h3>
-        <div class="field mt-16"><label for="c1">Campus name (exactly as students entered it)</label><input class="input" id="c1" value="${esc(last?.campus || '')}" placeholder="e.g. IIT Delhi" /></div>
+        <div class="field mt-16"><label for="c1">Community name (exactly as students entered it)</label><input class="input" id="c1" value="${esc(last?.campus || '')}" placeholder="e.g. IIT Delhi" /></div>
         <div class="field mt-8"><label for="p1">Dashboard PIN</label><input class="input" id="p1" type="password" autocomplete="current-password" /></div>
         <p class="error" id="err1">${esc(msg)}</p>
         <button class="btn primary block" id="open">Open dashboard</button>
       </section>
       <section class="card">
-        <h3>First time? Claim your campus</h3>
-        <p class="tiny muted mt-8">The first staff member to claim a campus sets its PIN. Share it only with your department.</p>
-        <div class="field mt-16"><label for="c2">Campus name</label><input class="input" id="c2" placeholder="e.g. IIT Delhi" /></div>
+        <h3>First time? Claim your community</h3>
+        <p class="tiny muted mt-8">The first staff member to claim a community sets its PIN. Share it only with your department.</p>
+        <div class="field mt-16"><label for="c2">Community name</label><input class="input" id="c2" placeholder="e.g. IIT Delhi" /></div>
         <div class="field mt-8"><label for="p2">Create a PIN (6+ characters)</label><input class="input" id="p2" type="password" autocomplete="new-password" /></div>
         <p class="error" id="err2"></p>
-        <button class="btn ghost block" id="claim">Claim campus dashboard</button>
+        <button class="btn ghost block" id="claim">Claim community dashboard</button>
       </section>
     </div>`;
 
@@ -58,7 +58,7 @@ function drawLogin(msg = '') {
     const setErr = (m) => (root.querySelector('#err2').textContent = m);
     try {
       await api('/institution/claim', { method: 'POST', body: { campus, pin } });
-      toast('Campus claimed');
+      toast('Community claimed');
       await open(campus, pin, setErr);
     } catch (err) { setErr(err.message); }
   };
@@ -133,8 +133,8 @@ function drawDashboard(d) {
         <div><div class="upper">Institution dashboard</div><h1 style="font-size:28px;font-weight:800;margin-top:4px">${esc(d.campus)}</h1></div>
         <div class="empty">
           <b style="color:var(--text);font-size:20px">${d.members} student${d.members === 1 ? '' : 's'} joined so far</b><br/><br/>
-          To protect student privacy, insights appear once at least ${d.minGroup} students have joined this campus in the ATHLORA app
-          (Campus tab → enter "${esc(d.campus)}").
+          To protect student privacy, insights appear once at least ${d.minGroup} students have joined this community in the ATHLORA app
+          (Community tab → enter "${esc(d.campus)}").
         </div>
       </div>`;
     root.querySelector('#signout').onclick = () => { save(null); drawLogin(); };
@@ -184,7 +184,7 @@ function drawDashboard(d) {
 
       <div class="two">
         <section class="card">
-          <h3>Fit India Fitness Protocol: campus averages</h3>
+          <h3>Fit India Fitness Protocol: community averages</h3>
           <p class="tiny muted mt-8">Average of students' latest AI assessments (0–100, ATHLORA's indicative scale). Shown only when ${d.minGroup}+ students were measured.</p>
           <div class="stack mt-16" style="gap:12px">
             ${d.fitIndia.map((c) => `

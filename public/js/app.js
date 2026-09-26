@@ -5,7 +5,7 @@ import * as dashboard from './views/dashboard.js';
 import * as move from './views/move.js';
 import * as setup from './views/setup.js';
 import * as passport from './views/passport.js';
-import * as campus from './views/campus.js';
+import * as community from './views/campus.js';
 
 const root = document.getElementById('app');
 
@@ -16,13 +16,13 @@ export const store = {
   missionRequest: null, // { minutes, environment } handed from dashboard to Move
 };
 
-const ROUTES = { dashboard, move, setup, passport, campus };
+const ROUTES = { dashboard, move, setup, passport, community, campus: community };
 const NAV = [
   ['dashboard', 'Dashboard', ICONS.home],
   ['setup', 'AI Setup', ICONS.ai],
   ['move', 'Move', ICONS.move],
   ['passport', 'Passport', ICONS.passport],
-  ['campus', 'Campus', ICONS.campus],
+  ['community', 'Community', ICONS.community],
 ];
 
 export const app = {
@@ -84,7 +84,8 @@ async function route() {
     history.replaceState(null, '', '#/move');
   }
   const view = ROUTES[name] || dashboard;
-  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (ROUTES[name] ? name : 'dashboard')));
+  const navKey = name === 'campus' ? 'community' : ROUTES[name] ? name : 'dashboard';
+  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
   const el = document.getElementById('view');

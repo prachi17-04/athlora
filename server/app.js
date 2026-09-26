@@ -42,7 +42,7 @@ function publicUser(u) {
     onboarded: Boolean(u.onboarded), campus: u.campus || '',
     profile: u.profile, createdAt: u.createdAt,
     timetable: u.timetable || { dayStart: '08:00', dayEnd: '18:00', classes: [] },
-    hasBuddy: Boolean(u.buddy),
+    buddyCount: (u.buddies || (u.buddy ? [u.buddy] : [])).length,
   };
 }
 
@@ -51,6 +51,15 @@ function localNow(offset, ts = Date.now()) {
   const d = new Date(ts - offset * 60000);
   return { day: d.getUTCDay(), min: d.getUTCHours() * 60 + d.getUTCMinutes() };
 }
+
+// A student's buddy list; upgrades records from the old single-buddy format in place
+function buddiesOf(u) {
+  if (!Array.isArray(u.buddies)) u.buddies = u.buddy ? [u.buddy] : [];
+  delete u.buddy;
+  return u.buddies;
+}
+
+const firstName = (u) => String(u.name || '').split(' ')[0];
 
 function movedOn(user, day, offset) {
   return (user.activities || []).some((a) => dayKey(a.completedAt, offset) === day);
@@ -309,13 +318,11 @@ function createApp(kv) {
     const firstToday = before.today.missions === 0;
     const streakAfter = firstToday ? before.streak + 1 : before.streak;
 
-    let buddyMovedToday = false;
-    if (u.buddy) {
-      const buddy = await kv.get(K.user(u.buddy.userId));
-      buddyMovedToday = Boolean(buddy && movedOn(buddy, dayKey(Date.now(), offset), offset));
-    }
+    const buddies = await Promise.all(buddiesOf(u).map((b) => kv.get(K.user(b.userId))));
+    const todayKey = dayKey(Date.now(), offset);
+    const buddiesMovedToday = buddies.filter((b) => b && movedOn(b, todayKey, offset)).length;
 
-    const score = engine.scoreMission(mission, results, { firstToday, streakAfter, buddyMovedToday });
+    const score = engine.scoreMission(mission, results, { firstToday, streakAfter, buddiesMovedToday });
     if (score.doneCount === 0) return res.status(400).json({ error: 'Complete at least one move to finish the mission' });
 
     mission.status = 'completed';
@@ -434,68 +441,74 @@ function createApp(kv) {
     });
   });
 
-  // =============== MOVE BUDDY (shared streak, no comparison) ===============
+  // =============== MOVE BUDDIES (shared streaks, no comparison) ===============
+  // Each student has one reusable invite code; any number of friends can use it.
   const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  api.post('/buddy/code', auth, h(async (req, res) => {
-    const u = req.user;
-    if (u.buddy) return res.status(400).json({ error: 'You already have a buddy' });
+  const MAX_BUDDIES = 100;
+
+  async function ensureBuddyCode(u) {
     const existing = u.buddyCode && await kv.get(`buddycode/${u.buddyCode}`);
-    if (existing && existing.expiresAt > Date.now()) return res.json({ code: u.buddyCode });
-    const code = Array.from({ length: 6 }, () => CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]).join('');
-    await kv.set(`buddycode/${code}`, { userId: u.id, expiresAt: Date.now() + DAY_MS });
+    if (existing?.userId === u.id) return u.buddyCode;
+    let code;
+    do {
+      code = Array.from({ length: 6 }, () => CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]).join('');
+    } while (await kv.get(`buddycode/${code}`));
+    await kv.set(`buddycode/${code}`, { userId: u.id });
     u.buddyCode = code;
     await saveUser(u);
-    res.json({ code });
-  }));
+    return code;
+  }
 
   api.post('/buddy/join', auth, h(async (req, res) => {
     const u = req.user;
     const code = clean(req.body.code, 10).toUpperCase().replace(/[^A-Z0-9]/g, '');
-    if (u.buddy) return res.status(400).json({ error: 'You already have a buddy' });
     const entry = await kv.get(`buddycode/${code}`);
-    if (!entry || entry.expiresAt < Date.now()) return res.status(400).json({ error: 'That code is invalid or expired' });
-    if (entry.userId === u.id) return res.status(400).json({ error: "That's your own code — share it with a friend" });
+    if (!entry) return res.status(400).json({ error: "That code doesn't exist. Check it with your friend." });
+    if (entry.userId === u.id) return res.status(400).json({ error: "That's your own code — share it with your friends" });
     const other = await kv.get(K.user(entry.userId));
-    if (!other) return res.status(400).json({ error: 'That code is invalid or expired' });
-    if (other.buddy) return res.status(400).json({ error: 'Your friend already has a buddy' });
+    if (!other || other.buddyCode !== code) return res.status(400).json({ error: "That code doesn't exist. Check it with your friend." });
+    const mine = buddiesOf(u), theirs = buddiesOf(other);
+    if (mine.some((b) => b.userId === other.id)) return res.status(400).json({ error: `You're already buddies with ${firstName(other)}` });
+    if (mine.length >= MAX_BUDDIES || theirs.length >= MAX_BUDDIES) return res.status(400).json({ error: `Buddy limit reached (${MAX_BUDDIES})` });
     const since = Date.now();
-    u.buddy = { userId: other.id, since };
-    other.buddy = { userId: u.id, since };
-    delete other.buddyCode;
-    delete u.buddyCode;
-    await kv.delete(`buddycode/${code}`);
+    mine.push({ userId: other.id, since });
+    theirs.push({ userId: u.id, since });
     await saveUser(other);
     await saveUser(u);
-    res.json({ ok: true });
+    res.json({ ok: true, name: firstName(other) });
   }));
 
   api.get('/buddy', auth, h(async (req, res) => {
     const u = req.user;
-    if (!u.buddy) return res.json({ buddy: null, code: u.buddyCode || null });
-    const other = await kv.get(K.user(u.buddy.userId));
-    if (!other || other.buddy?.userId !== u.id) return res.json({ buddy: null, code: null });
+    buddiesOf(u); // upgrade old single-buddy records before anything is saved
+    const code = await ensureBuddyCode(u);
     const offset = tzOffset(req);
     const today = dayKey(Date.now(), offset);
+    const others = await Promise.all(buddiesOf(u).map((b) => kv.get(K.user(b.userId))));
     // Only what a buddy needs: first name, moved today or not, the shared streak
-    res.json({
-      buddy: {
-        name: String(other.name || '').split(' ')[0],
+    const buddies = buddiesOf(u)
+      .map((b, i) => ({ b, other: others[i] }))
+      .filter(({ other }) => other && buddiesOf(other).some((x) => x.userId === u.id))
+      .map(({ b, other }) => ({
+        id: other.id,
+        name: firstName(other),
         movedToday: movedOn(other, today, offset),
-        meMovedToday: movedOn(u, today, offset),
         sharedStreak: sharedStreak(u, other, offset),
-        since: u.buddy.since,
-      },
-    });
+        since: b.since,
+      }))
+      .sort((a, b) => b.sharedStreak - a.sharedStreak || Number(b.movedToday) - Number(a.movedToday) || a.name.localeCompare(b.name));
+    res.json({ code, meMovedToday: movedOn(u, today, offset), buddies });
   }));
 
-  api.delete('/buddy', auth, h(async (req, res) => {
+  api.delete('/buddy/:id', auth, h(async (req, res) => {
     const u = req.user;
-    if (u.buddy) {
-      const other = await kv.get(K.user(u.buddy.userId));
-      if (other && other.buddy?.userId === u.id) { delete other.buddy; await saveUser(other); }
-      delete u.buddy;
-      await saveUser(u);
+    const other = await kv.get(K.user(req.params.id));
+    if (other) {
+      other.buddies = buddiesOf(other).filter((b) => b.userId !== u.id);
+      await saveUser(other);
     }
+    u.buddies = buddiesOf(u).filter((b) => b.userId !== req.params.id);
+    await saveUser(u);
     res.json({ ok: true });
   }));
 
@@ -506,9 +519,9 @@ function createApp(kv) {
   async function checkInstitution(req, res) {
     const campus = clean(req.body.campus, 80);
     const pin = String(req.body.pin || '');
-    if (!campusKey(campus)) { res.status(400).json({ error: 'Enter the campus name' }); return null; }
+    if (!campusKey(campus)) { res.status(400).json({ error: 'Enter the community name' }); return null; }
     const inst = await kv.get(instKey(campus));
-    if (!inst) { res.status(404).json({ error: 'This campus has no institution dashboard yet. Claim it first.' }); return null; }
+    if (!inst) { res.status(404).json({ error: 'This community has no institution dashboard yet. Claim it first.' }); return null; }
     if (inst.pinHash !== hmac('inst:' + campusKey(campus) + ':' + pin)) { res.status(403).json({ error: 'Wrong PIN' }); return null; }
     return { campus, inst };
   }
@@ -516,9 +529,9 @@ function createApp(kv) {
   api.post('/institution/claim', rateLimit, h(async (req, res) => {
     const campus = clean(req.body.campus, 80);
     const pin = String(req.body.pin || '');
-    if (!campusKey(campus)) return res.status(400).json({ error: 'Enter the campus name' });
+    if (!campusKey(campus)) return res.status(400).json({ error: 'Enter the community name' });
     if (pin.length < 6) return res.status(400).json({ error: 'Choose a PIN of at least 6 characters' });
-    if (await kv.get(instKey(campus))) return res.status(409).json({ error: 'This campus dashboard is already claimed. Ask your PE department for the PIN.' });
+    if (await kv.get(instKey(campus))) return res.status(409).json({ error: 'This community dashboard is already claimed. Ask your PE department for the PIN.' });
     await kv.set(instKey(campus), { name: campus, pinHash: hmac('inst:' + campusKey(campus) + ':' + pin), createdAt: Date.now() });
     res.json({ ok: true });
   }));

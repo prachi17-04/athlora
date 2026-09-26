@@ -177,8 +177,8 @@ export async function render(el, app) {
     box.innerHTML = `
       <p class="muted small">ATHLORA finds the free gaps between your classes and turns each one into a Move Mission, with a reminder when it starts.</p>
       <div class="grid-2 mt-16">
-        <div class="field"><label>Campus day starts</label><input class="input sm" type="time" id="ttStart" value="${esc(tt.dayStart)}" /></div>
-        <div class="field"><label>Campus day ends</label><input class="input sm" type="time" id="ttEnd" value="${esc(tt.dayEnd)}" /></div>
+        <div class="field"><label>Your day starts</label><input class="input sm" type="time" id="ttStart" value="${esc(tt.dayStart)}" /></div>
+        <div class="field"><label>Your day ends</label><input class="input sm" type="time" id="ttEnd" value="${esc(tt.dayEnd)}" /></div>
       </div>
       <div class="chips mt-16" id="ttDays">
         ${DAYS.map(([d, n]) => {

@@ -232,7 +232,7 @@ function generateMission(user, ctx, recent) {
  * results: [{ done, verified, achieved, formScore? }]
  * Verified (camera-confirmed) work earns 1.5x; verified work with good form (>= 80) earns a further 20%.
  */
-function scoreMission(mission, results, { firstToday, streakAfter, buddyMovedToday = false }) {
+function scoreMission(mission, results, { firstToday, streakAfter, buddiesMovedToday = 0 }) {
   let xp = 0;
   let formXp = 0;
   let activeSec = 0;
@@ -277,9 +277,9 @@ function scoreMission(mission, results, { firstToday, streakAfter, buddyMovedTod
     xp += b;
     breakdown.push({ label: `${streakAfter}-day consistency`, xp: b });
   }
-  if (doneCount > 0 && firstToday && buddyMovedToday) {
+  if (doneCount > 0 && firstToday && buddiesMovedToday > 0) {
     xp += 10;
-    breakdown.push({ label: 'You and your buddy both moved today', xp: 10 });
+    breakdown.push({ label: `You and ${buddiesMovedToday} ${buddiesMovedToday === 1 ? 'buddy' : 'buddies'} moved today`, xp: 10 });
   }
   const formAvg = formScores.length ? Math.round(formScores.reduce((a, b) => a + b, 0) / formScores.length) : null;
   return { xp, activeMin: Math.round((activeSec / 60) * 10) / 10, verifiedCount, doneCount, formAvg, breakdown };

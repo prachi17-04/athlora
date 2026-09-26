@@ -51,16 +51,70 @@ function opportunitiesCard(o) {
 }
 
 function buddyCard(b) {
-  if (!b?.buddy) return '';
-  const x = b.buddy;
+  if (!b?.buddies?.length) return '';
+  const moved = b.buddies.filter((x) => x.movedToday);
+  const shown = b.buddies.slice(0, 6);
   return `
     <section class="card" id="buddyCard" style="cursor:pointer">
       <div class="row between">
-        <div><div class="upper">Move buddy</div><b style="font-size:17px">${esc(x.name)}</b></div>
-        <span class="tag ${x.sharedStreak ? 'lime' : ''}">${x.sharedStreak} day shared streak</span>
+        <div><div class="upper">Move buddies · ${b.buddies.length}</div>
+          <b style="font-size:17px">${moved.length} of ${b.buddies.length} moved today</b></div>
+        <span class="tag ${b.meMovedToday ? 'lime' : 'warn'}">${b.meMovedToday ? 'You ✓' : 'Your turn'}</span>
       </div>
-      <p class="small muted mt-8">${x.movedToday ? `${esc(x.name)} moved today ✓` : `${esc(x.name)} hasn't moved yet today`} · ${x.meMovedToday ? 'you did ✓' : 'your turn!'}
-        ${x.movedToday && !x.meMovedToday ? '<br/><span class="accent">Move now to earn the +10 XP buddy bonus.</span>' : ''}</p>
+      <div class="chips mt-8">
+        ${shown.map((x) => `<span class="tag ${x.movedToday ? 'lime' : ''}">${x.movedToday ? '✓ ' : ''}${esc(x.name)} · 🔥${x.sharedStreak}</span>`).join('')}
+        ${b.buddies.length > shown.length ? `<span class="tag">+${b.buddies.length - shown.length} more</span>` : ''}
+      </div>
+      ${moved.length && !b.meMovedToday ? '<p class="small accent mt-8">Your buddies are moving. Join them and earn the +10 XP buddy bonus!</p>' : ''}
+    </section>`;
+}
+
+// Daily streak motivation: "Let's go! You have a __-day streak going on"
+const MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
+const PUSHES = [
+  'Small steps every day beat big steps once a week.',
+  "You don't need a gym. You need 3 minutes and a reason.",
+  'Every mission counts. Future you says thanks.',
+  "Consistency is your superpower. Don't break the chain!",
+  'Show up today, even for a little bit.',
+  "Motivation gets you started. Streaks keep you going.",
+  'One more day. One more win.',
+];
+
+function streakBanner(stats) {
+  const s = stats.streak;
+  const movedToday = stats.today.missions > 0;
+  const next = MILESTONES.find((m) => m > s);
+  let title, sub, cta = null;
+  if (s > 0 && movedToday) {
+    title = `🔥 Let's go! You have a ${s}-day streak going on!`;
+    sub = `Today's done ✓. Come back tomorrow to make it ${s + 1} days.`;
+  } else if (s > 0) {
+    title = `🔥 Let's go! You have a ${s}-day streak going on!`;
+    sub = `Don't let it break. Move today to make it ${s + 1} days. Even 3 minutes counts.`;
+    cta = 'Keep my streak alive';
+  } else if (stats.bestStreak > 0) {
+    title = "💪 Let's go! New day, new streak.";
+    sub = `Your best was ${stats.bestStreak} day${stats.bestStreak === 1 ? '' : 's'}. One mission today starts your comeback.`;
+    cta = 'Start my streak';
+  } else {
+    title = "💪 Let's go! Start your streak today.";
+    sub = 'Your first mission takes just 3 minutes. Day 1 starts now.';
+    cta = 'Start my streak';
+  }
+  const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0)) / 86400000);
+  return `
+    <section class="card streak-banner ${s > 0 ? 'on' : ''}">
+      <div class="streak-num"><b>${s}</b><span>day${s === 1 ? '' : 's'}</span></div>
+      <div style="flex:1;min-width:0">
+        <h2 style="font-size:18px;line-height:1.25">${title}</h2>
+        <p class="small muted mt-8">${sub}</p>
+        ${next ? `
+          <div class="bar mt-8"><div style="width:${Math.round((s / next) * 100)}%"></div></div>
+          <p class="tiny muted mt-8">${next - s} more day${next - s === 1 ? '' : 's'} to your ${next}-day milestone</p>` : ''}
+        <p class="tiny mt-8" style="color:var(--text);opacity:.8"><i>${PUSHES[dayOfYear % PUSHES.length]}</i></p>
+        ${cta && !stats.comeback ? `<button class="btn primary sm mt-16" id="streakGo">${cta}</button>` : ''}
+      </div>
     </section>`;
 }
 
@@ -143,6 +197,8 @@ export async function render(el, app) {
         <h1 style="font-size:28px;font-weight:800">${esc(u.name)}</h1>
       </div>
 
+      ${streakBanner(stats)}
+
       ${comebackCard(stats)}
 
       ${consistencyPanel(stats)}
@@ -205,7 +261,11 @@ export async function render(el, app) {
   });
   el.querySelector('#goSetup')?.addEventListener('click', () => app.navigate('setup'));
   el.querySelector('#addTimetable')?.addEventListener('click', () => { store.scrollTo = 'timetable'; app.navigate('setup'); });
-  el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('campus'));
+  el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('community'));
+  el.querySelector('#streakGo')?.addEventListener('click', () => {
+    store.missionRequest = { minutes: 3, environment: u.profile.environment || 'room' };
+    app.navigate('move');
+  });
   el.querySelectorAll('[data-opp]').forEach((b) => b.addEventListener('click', () => {
     const op = opps.items[Number(b.dataset.opp)];
     // A window that's already open only has the remaining minutes left
