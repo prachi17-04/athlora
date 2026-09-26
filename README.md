@@ -67,7 +67,7 @@ Any SMTP provider works, for example Brevo, SendGrid, Zoho, or Outlook. Change `
 
 Phone browsers only allow **camera access over HTTPS**, so the app must be deployed first:
 
-1. Deploy it (see step 5). You get a URL like `https://athlora.onrender.com`.
+1. Deploy it (see step 5). You get a URL like `https://athlora.netlify.app`.
 2. Open that URL on the phone:
    - **Android (Chrome):** menu ⋮ → **Install app** / **Add to Home screen**
    - **iPhone (Safari):** Share → **Add to Home Screen**
@@ -75,12 +75,24 @@ Phone browsers only allow **camera access over HTTPS**, so the app must be deplo
 
 To publish on the **Play Store or App Store** later, wrap the same `public/` folder with [Capacitor](https://capacitorjs.com) (`npx cap add android`) and point it at the deployed server URL.
 
-## 5. Deploy (Render, Railway, or any Node host)
+## 5. Deploy on Netlify
 
-- Build command: `npm install`
-- Start command: `npm start`
-- Environment variables: the values from your `.env`
-- **Add a persistent disk mounted at `/data` in the project folder.** Without it, some hosts erase the user data on every redeploy. For more than a few hundred users, move `server/db.js` to PostgreSQL or MongoDB. The routes don't need to change.
+The repo includes `netlify.toml`, so Netlify already knows what to do:
+
+- It publishes the `public/` folder as the website.
+- It runs the API (`netlify/functions/api.js`) as a Netlify Function.
+- It stores all user data in **Netlify Blobs**, which is built in, free, and needs no setup.
+
+Steps:
+
+1. On Netlify, open **Add new site → Import an existing project → GitHub** and pick `athlora`.
+   Leave the build settings empty, because `netlify.toml` fills them in.
+2. Go to **Site configuration → Environment variables** and add
+   `APP_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`.
+   Without `SMTP_USER`/`SMTP_PASS`, nobody can receive a code, because Netlify has no terminal to print it in.
+3. Open **Deploys → Trigger deploy → Deploy site**. Every later push to GitHub redeploys automatically.
+
+When running locally (`npm start`), the same API uses a JSON file in `data/` instead of Blobs.
 
 ---
 
@@ -103,10 +115,13 @@ Student ─► Context Engine (time · fitness · goal · environment · equipme
 ```
 athlora/
 ├─ server/
-│  ├─ index.js     API: auth/OTP, onboarding, missions, assessments, stats, campus
+│  ├─ app.js       API: auth/OTP, onboarding, missions, assessments, stats, campus
+│  ├─ index.js     local server (npm start)
 │  ├─ engine.js    Fitness Opportunity Engine + scoring + FGI
 │  ├─ mailer.js    OTP email (nodemailer)
-│  └─ db.js        JSON-file storage (data/athlora.json)
+│  └─ kv.js        storage: JSON file locally, Netlify Blobs when deployed
+├─ netlify/functions/api.js   the API as a Netlify Function
+├─ netlify.toml               Netlify build + redirect settings
 └─ public/         The website / PWA
    ├─ index.html, manifest.webmanifest, sw.js, icons/, css/styles.css
    └─ js/
