@@ -81,11 +81,28 @@ function missingKV(message) {
   return { get: fail, set: fail, delete: fail, list: fail };
 }
 
-// Upstash / Vercel KV env var names (the Vercel integration sets KV_REST_API_*)
-function redisFromEnv(env = process.env) {
-  const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
-  const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
-  return url && token ? redisKV(url, token) : null;
+// Finds Upstash REST credentials in the environment. Vercel's integration uses KV_REST_API_URL/TOKEN,
+// Upstash's own uses UPSTASH_REDIS_REST_URL/TOKEN, and either may carry a custom prefix (e.g. STORAGE_KV_REST_API_URL).
+function findRedisEnv(env = process.env) {
+  const pairs = [['KV_REST_API_URL', 'KV_REST_API_TOKEN'], ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN'], ['REDIS_REST_URL', 'REDIS_REST_TOKEN']];
+  for (const [urlSuffix, tokenSuffix] of pairs) {
+    const urlKeys = Object.keys(env).filter((k) => k.endsWith(urlSuffix) && env[k]).sort((a, b) => a.length - b.length);
+    for (const urlKey of urlKeys) {
+      const tokenKey = urlKey.slice(0, -urlSuffix.length) + tokenSuffix;
+      if (env[tokenKey]) return { url: env[urlKey], token: env[tokenKey], urlKey, tokenKey };
+    }
+  }
+  return null;
 }
 
-module.exports = { fileKV, blobsKV, redisKV, missingKV, redisFromEnv };
+function redisFromEnv(env = process.env) {
+  const found = findRedisEnv(env);
+  return found ? redisKV(found.url, found.token) : null;
+}
+
+// Names (never values) of database-looking env vars, to diagnose "not connected"
+function databaseEnvNames(env = process.env) {
+  return Object.keys(env).filter((k) => /KV_|REDIS|UPSTASH/i.test(k)).sort();
+}
+
+module.exports = { fileKV, blobsKV, redisKV, missingKV, redisFromEnv, findRedisEnv, databaseEnvNames };

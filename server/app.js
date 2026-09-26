@@ -3,6 +3,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const engine = require('./engine');
+const { databaseEnvNames } = require('./kv');
 
 const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -214,6 +215,8 @@ function createApp(kv) {
       ok: storage === 'ok',
       storage,
       appSecret: process.env.APP_SECRET ? 'set' : 'NOT set (using insecure default)',
+      // Names only (never values): helps diagnose a database that isn't connected
+      databaseEnv: storage === 'ok' ? undefined : databaseEnvNames(),
     });
   }));
 
