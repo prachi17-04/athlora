@@ -17,7 +17,6 @@
     "dotenv": "^16.4.5",
     "esbuild": "^0.28.2",
     "express": "^4.21.1",
-    "nodemailer": "^6.9.16",
     "serverless-http": "^4.0.0"
   }
 }

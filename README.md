@@ -8,7 +8,7 @@ One codebase runs as a **website** and as an **installable phone app** (a Progre
 
 | Feature | Where |
 |---|---|
-| Sign-up: name → email → **email OTP** → age → medical conditions → sports | First launch |
+| Sign-up: name → email → age → medical conditions → sports (the same email signs you back in) | First launch |
 | **Today's Consistency** panel (ring, streak, 7-day dots, nudge) | Dashboard only |
 | **Context-aware Move Missions** (time, fitness level, goal, environment, equipment, recent activity) | Move tab |
 | **Classroom mode** (quiet seated moves plus a walking mission after class) | Move → Classroom |
@@ -20,7 +20,9 @@ One codebase runs as a **website** and as an **installable phone app** (a Progre
 | Progress visualisation, badges, Fitness Passport | Passport tab |
 
 The bottom navigation holds Dashboard, AI Setup, Move, Passport, and Campus.
-There is **no dummy data**. Every number comes from real missions and assessments stored in `data/athlora.json`.
+There is **no dummy data**. Every number comes from real missions and assessments.
+
+Sign-in uses name and email only, with no verification code. Anyone who knows a student's email can open that account. That's fine for a pilot, but add email verification before storing anything sensitive.
 
 Following the design notes, the app deliberately does **not** include diet or calorie tracking, a huge exercise library, medical diagnosis, a chatbot, a leaderboard, or wearable integration.
 
@@ -46,28 +48,11 @@ npm start
 
 Open **http://localhost:3000**.
 
-Without email settings, the app runs in **dev mode**: the OTP code is printed in the terminal instead of being emailed.
-
-## 3. Send real OTP emails (Gmail)
-
-1. Turn on **2-Step Verification** for the Google account at https://myaccount.google.com/security.
-2. Create an **App password** at https://myaccount.google.com/apppasswords.
-3. Edit `.env`:
-   ```
-   SMTP_USER=youraddress@gmail.com
-   SMTP_PASS=the16charapppassword
-   MAIL_FROM="ATHLORA <youraddress@gmail.com>"
-   APP_SECRET=any-long-random-text
-   ```
-4. Restart with `npm start`. The terminal should say `SMTP configured`.
-
-Any SMTP provider works, for example Brevo, SendGrid, Zoho, or Outlook. Change `SMTP_HOST` and `SMTP_PORT` to match the provider.
-
-## 4. Use it as a phone app
+## 3. Use it as a phone app
 
 Phone browsers only allow **camera access over HTTPS**, so the app must be deployed first:
 
-1. Deploy it (see step 5). You get a URL like `https://athlora.netlify.app`.
+1. Deploy it (see step 4). You get a URL like `https://athlora.netlify.app`.
 2. Open that URL on the phone:
    - **Android (Chrome):** menu ⋮ → **Install app** / **Add to Home screen**
    - **iPhone (Safari):** Share → **Add to Home Screen**
@@ -75,7 +60,7 @@ Phone browsers only allow **camera access over HTTPS**, so the app must be deplo
 
 To publish on the **Play Store or App Store** later, wrap the same `public/` folder with [Capacitor](https://capacitorjs.com) (`npx cap add android`) and point it at the deployed server URL.
 
-## 5. Deploy on Netlify
+## 4. Deploy on Netlify
 
 The repo includes `netlify.toml`, so Netlify already knows what to do:
 
@@ -87,12 +72,10 @@ Steps:
 
 1. On Netlify, open **Add new site → Import an existing project → GitHub** and pick `athlora`.
    Leave the build settings empty, because `netlify.toml` fills them in.
-2. Go to **Site configuration → Environment variables** and add
-   `APP_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`.
-   Without `SMTP_USER`/`SMTP_PASS`, nobody can receive a code, because Netlify has no terminal to print it in.
+2. Recommended: go to **Site configuration → Environment variables** and add `APP_SECRET` (any long random text) with **All scopes**.
 3. Open **Deploys → Trigger deploy → Deploy site**. Every later push to GitHub redeploys automatically.
 
-To check a deployment, open `https://<your-site>.netlify.app/api/health`. It reports whether storage works and whether email is configured.
+To check a deployment, open `https://<your-site>.netlify.app/api/health`. It reports whether storage works.
 
 When running locally (`npm start`), the same API uses a JSON file in `data/` instead of Blobs.
 
@@ -117,10 +100,9 @@ Student ─► Context Engine (time · fitness · goal · environment · equipme
 ```
 athlora/
 ├─ server/
-│  ├─ app.js       API: auth/OTP, onboarding, missions, assessments, stats, campus
+│  ├─ app.js       API: sign-in, onboarding, missions, assessments, stats, campus
 │  ├─ index.js     local server (npm start)
 │  ├─ engine.js    Fitness Opportunity Engine + scoring + FGI
-│  ├─ mailer.js    OTP email (nodemailer)
 │  └─ kv.js        storage: JSON file locally, Netlify Blobs when deployed
 ├─ netlify/functions/api.mjs  the API as a Netlify Function (serves /api/*)
 ├─ netlify.toml               Netlify build + redirect settings
@@ -128,7 +110,7 @@ athlora/
    ├─ index.html, manifest.webmanifest, sw.js, icons/, css/styles.css
    └─ js/
       ├─ app.js          router + bottom navigation
-      ├─ onboarding.js   name → email → OTP → age → medical → sports
+      ├─ onboarding.js   name → email → age → medical → sports
       ├─ tracker.js      computer-vision rep counter
       └─ views/          dashboard, move, setup (AI Setup), passport, campus
 ```

@@ -1,5 +1,5 @@
 // Source for the ATHLORA API function. `npm run build` bundles this (with express,
-// nodemailer, etc.) into netlify/dist/api-bundle.mjs so the deployed function
+// serverless-http, etc.) into netlify/dist/api-bundle.mjs so the deployed function
 // has no external packages to resolve.
 import { getStore } from '@netlify/blobs';
 import handlerModule from '../../server/netlify-handler.js';

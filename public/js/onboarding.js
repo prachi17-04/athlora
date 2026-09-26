@@ -1,8 +1,8 @@
 import { api, session } from './api.js';
-import { esc, toast, MEDICAL_OPTIONS, SPORT_OPTIONS } from './ui.js';
+import { esc, MEDICAL_OPTIONS, SPORT_OPTIONS } from './ui.js';
 
 const DRAFT_KEY = 'athlora_onboarding';
-const STEPS = ['name', 'email', 'otp', 'age', 'medical', 'sports'];
+const STEPS = ['name', 'email', 'age', 'medical', 'sports'];
 
 function loadDraft() {
   try { return JSON.parse(sessionStorage.getItem(DRAFT_KEY)) || {}; } catch { return {}; }
@@ -24,9 +24,9 @@ export function startOnboarding(root, { user, onDone }) {
     if (!['age', 'medical', 'sports'].includes(d.step)) d.step = 'age';
   } else if (['age', 'medical', 'sports'].includes(d.step) || !d.step) {
     d.step = 'welcome';
+  } else if (!['welcome', 'name', 'email'].includes(d.step)) {
+    d.step = 'email'; // e.g. a draft saved by an older version
   }
-
-  let timer = null;
 
   function go(step) {
     d.step = step;
@@ -64,7 +64,6 @@ export function startOnboarding(root, { user, onDone }) {
   }
 
   function render() {
-    clearInterval(timer);
     const step = d.step;
 
     if (step === 'welcome') {
@@ -107,9 +106,9 @@ export function startOnboarding(root, { user, onDone }) {
       root.innerHTML = frame({
         step, back: 'name',
         title: `Hi ${esc(d.name)}, what's your email?`,
-        sub: "We'll send a 6-digit code to verify it.",
+        sub: 'Already joined? Use the same email to get back to your progress.',
         body: `<input class="input" id="email" type="email" inputmode="email" autocomplete="email" placeholder="you@college.edu" value="${esc(d.email || '')}" />`,
-        foot: `<button class="btn primary block" type="submit" id="sendBtn">Send code</button>`,
+        foot: `<button class="btn primary block" type="submit" id="sendBtn">Continue</button>`,
       });
       const input = root.querySelector('#email');
       input.focus();
@@ -117,96 +116,19 @@ export function startOnboarding(root, { user, onDone }) {
         const email = input.value.trim().toLowerCase();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return setError('Please enter a valid email address');
         const btn = root.querySelector('#sendBtn');
-        busy(btn, true, 'Sending…');
+        busy(btn, true, 'Signing in…');
         try {
-          const r = await api('/auth/request-otp', { method: 'POST', body: { name: d.name, email } });
-          d.email = email;
-          d.devMode = r.devMode;
-          d.resendAt = Date.now() + r.resendIn * 1000;
-          go('otp');
-        } catch (err) {
-          busy(btn, false);
-          if (err.data?.wait && d.email === email) { d.resendAt = Date.now() + err.data.wait * 1000; go('otp'); return; }
-          setError(err.message);
-        }
-      });
-    }
-
-    else if (step === 'otp') {
-      root.innerHTML = frame({
-        step, back: 'email',
-        title: 'Enter the code',
-        sub: `We sent a 6-digit code to <b style="color:var(--text)">${esc(d.email)}</b>. Check your spam folder too.`,
-        body: `
-          <div class="otp-boxes">${Array.from({ length: 6 }, (_, i) =>
-            `<input inputmode="numeric" autocomplete="${i === 0 ? 'one-time-code' : 'off'}" maxlength="6" aria-label="Digit ${i + 1}" />`).join('')}</div>
-          ${d.devMode ? `<p class="note">Developer mode: email isn't configured on the server yet, so the code is printed in the server terminal.</p>` : ''}
-          <p class="small muted" id="resendRow"></p>`,
-        foot: `<button class="btn primary block" type="submit" id="verifyBtn">Verify</button>`,
-      });
-      const boxes = [...root.querySelectorAll('.otp-boxes input')];
-      boxes[0].focus();
-      const code = () => boxes.map((b) => b.value).join('');
-      boxes.forEach((box, i) => {
-        box.addEventListener('input', () => {
-          const digits = box.value.replace(/\D/g, '');
-          if (digits.length > 1) {
-            // pasted or autofilled full code
-            digits.slice(0, 6).split('').forEach((ch, j) => { if (boxes[j]) boxes[j].value = ch; });
-            boxes[Math.min(digits.length, 6) - 1].focus();
-          } else {
-            box.value = digits;
-            if (digits && boxes[i + 1]) boxes[i + 1].focus();
-          }
-          if (code().length === 6) root.querySelector('#onbForm').requestSubmit();
-        });
-        box.addEventListener('keydown', (e) => {
-          if (e.key === 'Backspace' && !box.value && boxes[i - 1]) boxes[i - 1].focus();
-        });
-      });
-
-      const resendRow = root.querySelector('#resendRow');
-      const tick = () => {
-        const left = Math.ceil(((d.resendAt || 0) - Date.now()) / 1000);
-        if (left > 0) resendRow.textContent = `Resend code in ${left}s`;
-        else {
-          clearInterval(timer);
-          resendRow.innerHTML = `Didn't get it? <button type="button" class="link" id="resend">Resend code</button>`;
-          resendRow.querySelector('#resend').onclick = async () => {
-            try {
-              const r = await api('/auth/request-otp', { method: 'POST', body: { name: d.name, email: d.email } });
-              d.resendAt = Date.now() + r.resendIn * 1000;
-              saveDraft(d);
-              toast('New code sent');
-              timer = setInterval(tick, 1000); tick();
-            } catch (err) { setError(err.message); }
-          };
-        }
-      };
-      timer = setInterval(tick, 1000); tick();
-
-      let verifying = false;
-      onSubmit(async () => {
-        if (verifying) return;
-        if (code().length !== 6) return setError('Enter all 6 digits');
-        const btn = root.querySelector('#verifyBtn');
-        verifying = true;
-        busy(btn, true, 'Verifying…');
-        try {
-          const r = await api('/auth/verify-otp', { method: 'POST', body: { email: d.email, code: code(), name: d.name } });
+          const r = await api('/auth/login', { method: 'POST', body: { name: d.name, email } });
           session.set(r.token);
+          d.email = email;
           if (r.user.onboarded) {
             clearDraft();
-            clearInterval(timer);
             onDone(r.user);
             return;
           }
           go('age');
         } catch (err) {
-          verifying = false;
           busy(btn, false);
-          boxes.forEach((b) => (b.value = ''));
-          boxes[0].focus();
           setError(err.message);
         }
       });

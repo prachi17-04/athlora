@@ -2,12 +2,8 @@
 // and the Netlify Function (netlify/functions/api.js).
 const crypto = require('crypto');
 const express = require('express');
-const { sendOtpEmail } = require('./mailer');
 const engine = require('./engine');
 
-const OTP_TTL_MS = 10 * 60 * 1000;
-const OTP_RESEND_MS = 45 * 1000;
-const OTP_MAX_ATTEMPTS = 5;
 const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 const DAY_MS = 24 * 60 * 60 * 1000;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -21,7 +17,6 @@ const campusKey = (name) => (name || '').toLowerCase().replace(/\s+/g, ' ').trim
 const K = {
   user: (id) => `user/${id}`,
   email: (email) => `email/${sha(email)}`,
-  otp: (email) => `otp/${sha(email)}`,
   session: (tokenHash) => `session/${tokenHash}`,
   campusPrefix: (name) => `campus/${sha(campusKey(name))}/`,
 };
@@ -154,12 +149,12 @@ function createApp(kv) {
     next();
   });
 
-  // Best-effort per-IP limit for OTP requests
+  // Best-effort per-IP limit for sign-ins
   const ipHits = new Map();
   function rateLimit(req, res, next) {
     const now = Date.now();
     const hits = (ipHits.get(req.ip) || []).filter((t) => now - t < 15 * 60 * 1000);
-    if (hits.length >= 10) return res.status(429).json({ error: 'Too many requests. Try again in a few minutes.' });
+    if (hits.length >= 30) return res.status(429).json({ error: 'Too many requests. Try again in a few minutes.' });
     hits.push(now);
     ipHits.set(req.ip, hits);
     next();
@@ -178,66 +173,29 @@ function createApp(kv) {
     res.json({
       ok: storage === 'ok',
       storage,
-      email: process.env.SMTP_USER && process.env.SMTP_PASS ? 'configured' : 'NOT configured (set SMTP_USER and SMTP_PASS)',
       appSecret: process.env.APP_SECRET ? 'set' : 'NOT set (using insecure default)',
     });
   }));
 
-  // =============== AUTH ===============
-  api.post('/auth/request-otp', rateLimit, h(async (req, res) => {
+  // =============== AUTH (name + email, no verification code) ===============
+  api.post('/auth/login', rateLimit, h(async (req, res) => {
     const name = clean(req.body.name, 60);
     const email = clean(req.body.email, 120).toLowerCase();
     if (name.length < 2) return res.status(400).json({ error: 'Please enter your name' });
     if (!EMAIL_RE.test(email)) return res.status(400).json({ error: 'Please enter a valid email address' });
 
-    const existing = await kv.get(K.otp(email));
-    if (existing && Date.now() - existing.sentAt < OTP_RESEND_MS) {
-      const wait = Math.ceil((OTP_RESEND_MS - (Date.now() - existing.sentAt)) / 1000);
-      return res.status(429).json({ error: `Please wait ${wait}s before requesting a new code`, wait });
-    }
-
-    const code = String(crypto.randomInt(0, 1000000)).padStart(6, '0');
-    await kv.set(K.otp(email), { codeHash: hmac(email + ':' + code), sentAt: Date.now(), expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
-
-    try {
-      const r = await sendOtpEmail(email, name, code);
-      res.json({ ok: true, devMode: r.dev, resendIn: OTP_RESEND_MS / 1000 });
-    } catch (err) {
-      console.error('Email send failed:', err.message);
-      await kv.delete(K.otp(email));
-      res.status(500).json({ error: `Could not send the email (${err.message}).` });
-    }
-  }));
-
-  api.post('/auth/verify-otp', h(async (req, res) => {
-    const email = clean(req.body.email, 120).toLowerCase();
-    const code = clean(req.body.code, 6);
-    const name = clean(req.body.name, 60);
-    const otp = await kv.get(K.otp(email));
-    if (!otp || otp.expiresAt < Date.now()) return res.status(400).json({ error: 'Code expired. Request a new one.' });
-    if (otp.attempts >= OTP_MAX_ATTEMPTS) return res.status(429).json({ error: 'Too many wrong attempts. Request a new code.' });
-
-    const a = Buffer.from(otp.codeHash);
-    const b = Buffer.from(hmac(email + ':' + code));
-    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-      otp.attempts++;
-      await kv.set(K.otp(email), otp);
-      return res.status(400).json({ error: `Incorrect code. ${OTP_MAX_ATTEMPTS - otp.attempts} attempts left.` });
-    }
-    await kv.delete(K.otp(email));
-
     const idx = await kv.get(K.email(email));
     let user = idx ? await kv.get(K.user(idx.userId)) : null;
     if (!user) {
       user = {
-        id: uid(), name: name || email.split('@')[0], email, createdAt: Date.now(), onboarded: false,
+        id: uid(), name, email, createdAt: Date.now(), onboarded: false,
         campus: '', xp: 0,
         profile: { fitnessLevel: 'beginner', goal: 'general', equipment: [], environment: 'room', levelSource: 'default' },
         missions: [], activities: [], assessments: [],
       };
       await saveUser(user);
       await kv.set(K.email(email), { userId: user.id });
-    } else if (name && !user.onboarded) {
+    } else if (!user.onboarded) {
       user.name = name;
       await saveUser(user);
     }

@@ -164,13 +164,6 @@ h1, h2, h3, p { margin: 0; }
 .splash .tag-line { color: var(--muted); margin-top: 6px; }
 .splash .quote { margin: 34px auto 0; max-width: 320px; font-size: 18px; line-height: 1.4; }
 
-.otp-boxes { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
-.otp-boxes input {
-  text-align: center; font-size: 24px; font-weight: 700; padding: 14px 0;
-  background: var(--card-2); border: 1px solid var(--line); border-radius: 12px; outline: none; width: 100%;
-}
-.otp-boxes input:focus { border-color: var(--accent); }
-
 .choice-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .choice {
   background: var(--card); border: 1.5px solid var(--line); border-radius: 16px;

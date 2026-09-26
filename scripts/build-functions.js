@@ -12,7 +12,7 @@ esbuild.buildSync({
   platform: 'node',
   format: 'esm',
   target: 'node20',
-  // Bundled CommonJS packages (express, nodemailer) call require() for Node built-ins
+  // Bundled CommonJS packages (express) call require() for Node built-ins
   banner: { js: "import { createRequire as __athloraCreateRequire } from 'module'; const require = __athloraCreateRequire(import.meta.url);" },
   logLevel: 'warning',
 });
