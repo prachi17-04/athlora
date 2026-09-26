@@ -1,19 +1,12 @@
 // Vercel Function running the ATHLORA API. vercel.json rewrites /api/* here;
-// Express routes on the original path. Data lives in Upstash Redis.
+// Express routes on the original path. Data lives in Redis (Upstash, or any REDIS_URL).
 const { createApp } = require('../server/app');
-const { redisFromEnv, missingKV, databaseEnvNames } = require('../server/kv');
+const { redisFromEnv, missingKV } = require('../server/kv');
 
-function notConnectedMessage() {
-  const names = databaseEnvNames();
-  if (names.includes('REDIS_URL') || names.some((n) => n.endsWith('_REDIS_URL'))) {
-    return 'A Redis database is connected, but it only offers a redis:// URL. ATHLORA needs an Upstash database ' +
-      '(it provides KV_REST_API_URL and KV_REST_API_TOKEN). In Vercel: Storage → Create Database → Upstash for Redis, connect it, then redeploy.';
-  }
-  return 'No database connected. In your Vercel project open Storage → Create Database → Upstash (Redis), ' +
-    'connect it to this project, then redeploy.';
-}
-
-const kv = redisFromEnv() || missingKV(notConnectedMessage());
+const kv = redisFromEnv() || missingKV(
+  'No database connected. In your Vercel project open Storage → Create Database → Redis (or Upstash for Redis), ' +
+  'connect it to this project, then redeploy.'
+);
 const app = createApp(kv);
 
 module.exports = (req, res) => {

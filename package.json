@@ -17,6 +17,7 @@
     "dotenv": "^16.4.5",
     "esbuild": "^0.28.2",
     "express": "^4.21.1",
+    "redis": "^6.2.1",
     "serverless-http": "^4.0.0"
   }
 }

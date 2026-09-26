@@ -75,6 +75,52 @@ function redisKV(url, token) {
   };
 }
 
+// Any Redis reachable by a redis:// or rediss:// URL (e.g. Vercel's "Redis" integration, which sets REDIS_URL).
+// One client per server instance, connected on first use and reused across requests.
+function tcpRedisKV(url) {
+  let clientPromise = null;
+  function client() {
+    if (!clientPromise) {
+      const { createClient } = require('redis');
+      const c = createClient({
+        url,
+        RESP: 2, // classic protocol: supported by every Redis server and provider
+        socket: {
+          connectTimeout: 10000,
+          // Give up after a few attempts so a request fails with a clear error instead of hanging
+          reconnectStrategy: (retries) => (retries > 3 ? new Error('Redis is unreachable') : Math.min(retries * 200, 1000)),
+        },
+      });
+      c.on('error', (err) => console.error('Redis error:', err.message));
+      clientPromise = c.connect().then(() => c).catch((err) => {
+        clientPromise = null;
+        throw new Error(`Database error: could not connect to Redis (${err.message})`);
+      });
+    }
+    return clientPromise;
+  }
+  const globEscape = (s) => s.replace(/[*?[\]\\]/g, '\\$&');
+  return {
+    async get(key) {
+      const v = await (await client()).get(key);
+      return v === null || v === undefined ? null : JSON.parse(v);
+    },
+    async set(key, value) { await (await client()).set(key, JSON.stringify(value)); },
+    async delete(key) { await (await client()).del(key); },
+    async list(prefix) {
+      const c = await client();
+      const keys = [];
+      let cursor = '0';
+      do {
+        const r = await c.scan(cursor, { MATCH: `${globEscape(prefix)}*`, COUNT: 1000 });
+        keys.push(...r.keys);
+        cursor = String(r.cursor);
+      } while (cursor !== '0');
+      return keys;
+    },
+  };
+}
+
 // Stand-in used when no database is connected: every call explains how to fix it
 function missingKV(message) {
   const fail = async () => { throw new Error(message); };
@@ -95,9 +141,14 @@ function findRedisEnv(env = process.env) {
   return null;
 }
 
+// Prefers Upstash's REST API; otherwise any redis:// URL (REDIS_URL, possibly with a custom prefix)
 function redisFromEnv(env = process.env) {
   const found = findRedisEnv(env);
-  return found ? redisKV(found.url, found.token) : null;
+  if (found) return redisKV(found.url, found.token);
+  const urlKey = Object.keys(env)
+    .filter((k) => (k === 'REDIS_URL' || k.endsWith('_REDIS_URL')) && /^rediss?:\/\//.test(env[k] || ''))
+    .sort((a, b) => a.length - b.length)[0];
+  return urlKey ? tcpRedisKV(env[urlKey]) : null;
 }
 
 // Names (never values) of database-looking env vars, to diagnose "not connected"
@@ -105,4 +156,4 @@ function databaseEnvNames(env = process.env) {
   return Object.keys(env).filter((k) => /KV_|REDIS|UPSTASH/i.test(k)).sort();
 }
 
-module.exports = { fileKV, blobsKV, redisKV, missingKV, redisFromEnv, findRedisEnv, databaseEnvNames };
+module.exports = { fileKV, blobsKV, redisKV, tcpRedisKV, missingKV, redisFromEnv, findRedisEnv, databaseEnvNames };
