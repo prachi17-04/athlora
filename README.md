@@ -80,7 +80,7 @@ To publish on the **Play Store or App Store** later, wrap the same `public/` fol
 The repo includes `netlify.toml`, so Netlify already knows what to do:
 
 - It publishes the `public/` folder as the website.
-- It runs the API (`netlify/functions/api.js`) as a Netlify Function.
+- It runs the API (`netlify/functions/api.mjs`) as a Netlify Function.
 - It stores all user data in **Netlify Blobs**, which is built in, free, and needs no setup.
 
 Steps:
@@ -91,6 +91,8 @@ Steps:
    `APP_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`.
    Without `SMTP_USER`/`SMTP_PASS`, nobody can receive a code, because Netlify has no terminal to print it in.
 3. Open **Deploys → Trigger deploy → Deploy site**. Every later push to GitHub redeploys automatically.
+
+To check a deployment, open `https://<your-site>.netlify.app/api/health`. It reports whether storage works and whether email is configured.
 
 When running locally (`npm start`), the same API uses a JSON file in `data/` instead of Blobs.
 
@@ -120,7 +122,7 @@ athlora/
 │  ├─ engine.js    Fitness Opportunity Engine + scoring + FGI
 │  ├─ mailer.js    OTP email (nodemailer)
 │  └─ kv.js        storage: JSON file locally, Netlify Blobs when deployed
-├─ netlify/functions/api.js   the API as a Netlify Function
+├─ netlify/functions/api.mjs  the API as a Netlify Function (serves /api/*)
 ├─ netlify.toml               Netlify build + redirect settings
 └─ public/         The website / PWA
    ├─ index.html, manifest.webmanifest, sw.js, icons/, css/styles.css

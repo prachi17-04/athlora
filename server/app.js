@@ -165,6 +165,24 @@ function createApp(kv) {
     next();
   }
 
+  // =============== HEALTH (open /api/health in a browser to check the deployment) ===============
+  api.get('/health', h(async (req, res) => {
+    let storage = 'ok';
+    try {
+      await kv.set('health/check', { at: Date.now() });
+      const back = await kv.get('health/check');
+      if (!back) storage = 'error: wrote a test value but could not read it back';
+    } catch (err) {
+      storage = `error: ${err.message}`;
+    }
+    res.json({
+      ok: storage === 'ok',
+      storage,
+      email: process.env.SMTP_USER && process.env.SMTP_PASS ? 'configured' : 'NOT configured (set SMTP_USER and SMTP_PASS)',
+      appSecret: process.env.APP_SECRET ? 'set' : 'NOT set (using insecure default)',
+    });
+  }));
+
   // =============== AUTH ===============
   api.post('/auth/request-otp', rateLimit, h(async (req, res) => {
     const name = clean(req.body.name, 60);
@@ -187,7 +205,7 @@ function createApp(kv) {
     } catch (err) {
       console.error('Email send failed:', err.message);
       await kv.delete(K.otp(email));
-      res.status(500).json({ error: 'Could not send the email. Check the SMTP settings on the server.' });
+      res.status(500).json({ error: `Could not send the email (${err.message}).` });
     }
   }));
 
@@ -392,7 +410,7 @@ function createApp(kv) {
 
   app.use((err, req, res, _next) => {
     console.error(err);
-    res.status(500).json({ error: 'Something went wrong' });
+    res.status(500).json({ error: `Server error: ${err.message || 'unknown'}` });
   });
 
   return app;

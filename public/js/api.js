@@ -26,7 +26,7 @@ export async function api(path, { method = 'GET', body } = {}) {
   } catch {
     throw new Error('No connection. Check your internet and try again.');
   }
-  const data = await res.json().catch(() => ({}));
+  const data = await res.json().catch(() => ({ error: `Server error (${res.status}). Please try again.` }));
   if (res.status === 401 && token) {
     session.clear();
     location.hash = '';

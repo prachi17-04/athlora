@@ -6,18 +6,8 @@
 [functions]
   node_bundler = "esbuild"
 
-# API calls go to the Netlify Function
-[[redirects]]
-  from = "/api/*"
-  to = "/.netlify/functions/api/:splat"
-  status = 200
-  force = true
-
-# Single-page app: every other path loads index.html
-[[redirects]]
-  from = "/*"
-  to = "/index.html"
-  status = 200
+# The API function (netlify/functions/api.mjs) serves /api/* via its own `config.path`.
+# No SPA fallback is needed: the app navigates with #/ hash routes.
 
 [[headers]]
   for = "/sw.js"

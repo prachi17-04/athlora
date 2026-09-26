@@ -12,6 +12,10 @@ const transporter = configured
   : null;
 
 async function sendOtpEmail(to, name, code) {
+  if (!configured && globalThis.Netlify) {
+    // Deployed: nobody can see a printed code, so fail loudly
+    throw new Error('SMTP_USER / SMTP_PASS are not set in Netlify environment variables');
+  }
   if (!configured) {
     console.log('\n==============================================');
     console.log(`  [DEV MODE] OTP for ${to}: ${code}`);
