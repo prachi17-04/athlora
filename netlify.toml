@@ -1,10 +1,8 @@
 [build]
   publish = "public"
   functions = "netlify/functions"
-  command = "echo 'No build step needed'"
-
-[functions]
-  node_bundler = "esbuild"
+  # Bundles the API + all npm packages into netlify/dist/api-bundle.mjs
+  command = "npm run build"
 
 # The API function (netlify/functions/api.mjs) serves /api/* via its own `config.path`.
 # No SPA fallback is needed: the app navigates with #/ hash routes.
