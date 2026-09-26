@@ -367,12 +367,16 @@ function createApp(kv) {
     const input = req.body.results || {};
     const results = {};
     const verified = {};
+    // The AI assessment is camera-only: results count only when the camera verified them
     for (const t of engine.TESTS) {
       const v = Number(input[t.key]);
-      if (input[t.key] !== undefined && input[t.key] !== null && Number.isFinite(v) && v >= 0 && v <= 1000) results[t.key] = Math.round(v);
-      verified[t.key] = Boolean(req.body.verified?.[t.key]);
+      if (!req.body.verified?.[t.key]) continue;
+      if (input[t.key] !== undefined && input[t.key] !== null && Number.isFinite(v) && v >= 0 && v <= 1000) {
+        results[t.key] = Math.round(v);
+        verified[t.key] = true;
+      }
     }
-    if (!Object.keys(results).length) return res.status(400).json({ error: 'No results to save' });
+    if (!Object.keys(results).length) return res.status(400).json({ error: 'No camera-verified results to save. Complete at least one test on camera.' });
 
     const prior = [...(u.assessments || [])].sort((a, b) => a.createdAt - b.createdAt);
     const level = engine.levelFromAssessment(results);

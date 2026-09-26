@@ -135,7 +135,9 @@ export async function render(el, app) {
         </section>
         ${it.cv ? `
           <button class="btn primary block" id="verify">${ICONS.camera} Verify with camera</button>
-          <button class="btn ghost block" id="manual">Done without camera</button>`
+          ${it.sensor && motionSupported() ? '<button class="btn ghost block" id="stepsBtn">👟 Or track with phone sensors</button>' : ''}
+          <button class="btn ghost block" id="manual">Done without camera</button>
+          <p class="tiny muted center">Camera-verified moves earn 1.5× XP and teach ATHLORA your level.</p>`
         : it.sensor && motionSupported() ? `
           <button class="btn primary block" id="stepsBtn">👟 Track with phone sensors</button>
           <button class="btn ghost block" id="manual">Mark done without tracking</button>`
@@ -159,7 +161,7 @@ export async function render(el, app) {
     el.querySelector('#verify')?.addEventListener('click', async () => {
       const r = await openTracker({ type: it.cv, title: it.name, target: it.target });
       if (!r) return;
-      if (!r.achieved) return toast('No reps detected. Try again or tap "Done without camera".', true);
+      if (!r.achieved) return toast(`No ${it.unit === 'sec' ? 'activity' : 'reps'} detected. Try again or tap "Done without camera".`, true);
       const result = { done: true, verified: r.verified, achieved: r.achieved, formScore: r.form?.score ?? null, formTip: r.form?.tip ?? null };
       if (r.form) return showForm(it, r, result);
       if (r.achieved < it.target) toast(`Verified ${r.achieved}/${it.target} — partial credit`);

@@ -343,10 +343,187 @@ function balanceCounter() {
   };
 }
 
+// Calf raises: heel lifts above the toes (side or front view, feet in frame)
+function calfCounter() {
+  const FEET = { left: { heel: 29, toe: 31, ankle: L.la }, right: { heel: 30, toe: 32, ankle: L.ra } };
+  let state = 'down', count = 0, base = null, rep = null;
+  const form = formTracker({
+    height: 'Rise higher onto the balls of your feet.',
+    tempo: 'Lower slowly, with control, about a second down.',
+  });
+  return {
+    get count() { return count; },
+    get formLast() { return form.last; },
+    get form() { return form.summary; },
+    update(P, dt, now) {
+      const score = (s) => P(FEET[s].heel).v + P(FEET[s].toe).v + P(FEET[s].ankle).v;
+      const f = FEET[score('left') >= score('right') ? 'left' : 'right'];
+      const heel = P(f.heel), toe = P(f.toe), ankle = P(f.ankle);
+      if (!visible(heel, toe, ankle)) return { tracking: false, msg: 'Step back so your feet are in the frame' };
+      const footLen = Math.hypot(heel.x - toe.x, heel.y - toe.y) || 1;
+      const lift = (toe.y - heel.y) / footLen; // grows as the heel rises above the toes
+      // Flat-foot level: follows the lowest heel position, drifting up only very slowly
+      base = base === null ? lift : Math.min(lift, base + (lift - base) * 0.002);
+      // A full raise lifts the heel ~5-7 cm on a ~22 cm foot, i.e. roughly 0.25-0.35 of foot length
+      const rise = lift - base;
+      if (state === 'down' && rise > 0.18) { state = 'up'; rep = { start: now, max: rise }; }
+      else if (state === 'up') {
+        rep.max = Math.max(rep.max, rise);
+        if (rise < 0.07) {
+          state = 'down';
+          count++;
+          form.add({ height: grade(rep.max, 0.18, 0.32), tempo: grade((now - rep.start) / 1000, 0.5, 1.2) });
+          return { tracking: true, rep: true, msg: 'Nice!' };
+        }
+      }
+      return { tracking: true, msg: state === 'up' ? 'Hold… now lower slowly' : 'Rise onto your toes' };
+    },
+  };
+}
+
+// Rows and shoulder presses: one arm's elbow bends then straightens = 1 rep
+function elbowCounter() {
+  let state = 'ext', count = 0, rep = null;
+  const form = formTracker({
+    range: 'Use the full range: bend your elbow to about 90°.',
+    extension: 'Straighten your arm fully at the end of each rep.',
+    tempo: "Control the movement, don't rush.",
+  });
+  return {
+    get count() { return count; },
+    get formLast() { return form.last; },
+    get form() { return form.summary; },
+    update(P, dt, now) {
+      const s = bestSide(P, ['sh', 'el', 'wr']);
+      const sh = P(s.sh), el = P(s.el), wr = P(s.wr);
+      if (!visible(sh, el, wr)) return { tracking: false, msg: 'Keep your shoulder, elbow and wrist in view' };
+      const a = angle(sh, el, wr);
+      rep ??= { start: now, min: a, max: a };
+      rep.min = Math.min(rep.min, a);
+      rep.max = Math.max(rep.max, a);
+      if (state === 'ext' && a < 100) state = 'flex';
+      else if (state === 'flex' && a > 150) {
+        state = 'ext';
+        count++;
+        form.add({ range: grade(rep.min, 115, 85), extension: grade(rep.max, 145, 165), tempo: grade((now - rep.start) / 1000, 0.8, 1.8) });
+        rep = null;
+        return { tracking: true, rep: true, msg: 'Nice rep!' };
+      }
+      return { tracking: true, msg: state === 'flex' ? 'Now extend fully' : 'Bend your elbow' };
+    },
+  };
+}
+
+// Seated punches: each arm straightening out from a bent position = 1 punch (both arms counted)
+function punchCounter() {
+  const st = { left: 'bent', right: 'bent' }, peak = { left: 0, right: 0 };
+  let count = 0;
+  const form = formTracker({ extension: 'Punch all the way out, straighten your arm.' });
+  return {
+    get count() { return count; },
+    get formLast() { return form.last; },
+    get form() { return form.summary; },
+    update(P) {
+      let tracked = false, rep = false;
+      for (const side of ['left', 'right']) {
+        const S = SIDES[side];
+        const sh = P(S.sh), el = P(S.el), wr = P(S.wr);
+        if (!visible(sh, el, wr)) continue;
+        tracked = true;
+        const a = angle(sh, el, wr);
+        peak[side] = Math.max(peak[side], a);
+        if (st[side] === 'bent' && a > 150) { st[side] = 'out'; count++; rep = true; }
+        else if (st[side] === 'out' && a < 100) { st[side] = 'bent'; form.add({ extension: grade(peak[side], 145, 170) }); peak[side] = 0; }
+      }
+      if (!tracked) return { tracking: false, msg: 'Face the camera with your arms in view' };
+      return { tracking: true, rep, msg: 'Punch, punch, punch!' };
+    },
+  };
+}
+
+// Seated leg extensions: a knee straightening from a bent (seated) position = 1 rep, either leg
+function legExtCounter() {
+  const st = { left: 'bent', right: 'bent' }, peak = { left: 0, right: 0 };
+  let count = 0;
+  const form = formTracker({ extension: 'Straighten your knee fully and hold for a second.' });
+  return {
+    get count() { return count; },
+    get formLast() { return form.last; },
+    get form() { return form.summary; },
+    update(P) {
+      let tracked = false, rep = false;
+      for (const side of ['left', 'right']) {
+        const S = SIDES[side];
+        const hip = P(S.hip), knee = P(S.knee), ankle = P(S.ankle);
+        if (!visible(hip, knee, ankle)) continue;
+        tracked = true;
+        const a = angle(hip, knee, ankle);
+        if (st[side] === 'out') peak[side] = Math.max(peak[side], a);
+        if (st[side] === 'bent' && a > 150) { st[side] = 'out'; count++; rep = true; peak[side] = a; }
+        else if (st[side] === 'out' && a < 115) { st[side] = 'bent'; form.add({ extension: grade(peak[side], 150, 172) }); }
+      }
+      if (!tracked) return { tracking: false, msg: 'Turn a little side-on so your hips, knees and ankles are visible' };
+      return { tracking: true, rep, msg: 'Straighten one leg, then the other' };
+    },
+  };
+}
+
+// Dynamic timed moves (marching, mobility, shoulder rolls, twists): counts seconds while the body is visibly moving.
+// Compares positions ~0.5 s apart, so small detection jitter doesn't count as movement.
+function activeCounter() {
+  const IDS = [0, 11, 12, 13, 14, 15, 16, 25, 26, 27, 28];
+  const hist = [];
+  let active = 0, lastGood = 0;
+  return {
+    get count() { return Math.floor(active); },
+    get held() { return active; },
+    get lastGood() { return lastGood; },
+    get form() { return null; },
+    update(P, dt, now) {
+      const ls = P(L.ls), rs = P(L.rs);
+      if (!visible(ls, rs)) return { tracking: false, msg: 'Face the camera with your upper body in view' };
+      const sw = Math.hypot(ls.x - rs.x, ls.y - rs.y) || 1;
+      hist.push({ t: now, pts: IDS.map((i) => (P(i).v > 0.5 ? [P(i).x, P(i).y] : null)) });
+      while (hist.length > 2 && now - hist[1].t >= 450) hist.shift();
+      const ref = hist[0];
+      if (now - ref.t < 350) return { tracking: true, msg: 'Start moving…' };
+      const cur = hist[hist.length - 1].pts;
+      let maxMove = 0;
+      ref.pts.forEach((p, k) => { if (p && cur[k]) maxMove = Math.max(maxMove, Math.hypot(p[0] - cur[k][0], p[1] - cur[k][1]) / sw); });
+      if (maxMove > 0.12) {
+        active += dt;
+        lastGood = now;
+        return { tracking: true, msg: 'Moving — keep going!' };
+      }
+      return { tracking: true, msg: 'Keep moving, follow the cue' };
+    },
+  };
+}
+
+// Stretches, posture resets and other still holds: counts seconds while the student stays in view
+function holdCounter() {
+  let held = 0, lastGood = 0;
+  return {
+    get count() { return Math.floor(held); },
+    get held() { return held; },
+    get lastGood() { return lastGood; },
+    get form() { return null; },
+    update(P, dt, now) {
+      if (!visible(P(L.nose), P(L.ls), P(L.rs))) return { tracking: false, msg: 'Stay in view of the camera' };
+      held += dt;
+      lastGood = now;
+      return { tracking: true, msg: 'Good — hold it and breathe slowly' };
+    },
+  };
+}
+
 const COUNTERS = {
   squat: squatCounter, pushup: pushupCounter, jj: jackCounter, knees: kneesCounter, plank: plankCounter,
   arms: armsCounter, fold: foldCounter, balance: balanceCounter,
+  calf: calfCounter, elbow: elbowCounter, punch: punchCounter, legext: legExtCounter, active: activeCounter, hold: holdCounter,
 };
+// Counters measured in seconds (the rest count reps)
+export const TIMED_COUNTERS = ['plank', 'balance', 'active', 'hold'];
 export const _counters = COUNTERS; // exposed for automated tests with synthetic poses
 
 const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28]];
@@ -363,7 +540,7 @@ const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 
  */
 export function openTracker(o) {
   return new Promise((resolve) => {
-    const isHold = o.type === 'plank' || o.type === 'balance';
+    const isHold = TIMED_COUNTERS.includes(o.type);
     const unit = isHold ? 'sec' : o.type === 'fold' ? 'reach' : 'reps';
     const overlay = document.createElement('div');
     overlay.className = 'tracker mirror';

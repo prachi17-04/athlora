@@ -256,21 +256,17 @@ export async function render(el, app) {
         </section>
         <p class="small muted center">Prop your phone or laptop 2–3 m away so your whole body fits in the frame.</p>
         <button class="btn primary block" id="cam">${ICONS.camera} Start test with camera</button>
-        <div id="manualBox" hidden class="row">
-          <input class="input" id="manualVal" type="number" inputmode="numeric" min="0" max="500" placeholder="${unitOf(t) === 's' ? 'Seconds' : 'Reps'}" />
-          <button class="btn" id="manualSave">Save</button>
-        </div>
+        <p class="tiny muted center">The AI assessment is camera-only, so your baseline and growth are always genuinely measured.</p>
         <div class="row between">
-          ${t.type === 'fold' ? '<span></span>' : `<button class="link" id="manual">Can't use the camera? Enter manually</button>`}
-          <button class="link" id="skip" style="color:var(--muted)">Skip</button>
+          <button class="link" id="quit" style="color:var(--muted)">Cancel assessment</button>
+          <button class="link" id="skip" style="color:var(--muted)">Skip this test</button>
         </div>
-        <button class="link" id="quit" style="color:var(--muted)">Cancel assessment</button>
       </div>`;
 
     el.querySelector('#cam').onclick = async () => {
       const r = await openTracker({ type: t.type, title: t.title, window: t.window, target: t.target });
       if (!r) return;
-      if (!r.achieved) return toast(t.window ? 'No reps detected — try again, or enter manually.' : 'No hold detected — try again.', true);
+      if (!r.achieved) return toast(t.window ? 'No reps detected. Check you are fully in frame and try again.' : 'No hold detected. Check you are fully in frame and try again.', true);
       assess.results[t.key] = r.achieved;
       assess.verified[t.key] = r.verified;
       if (t.key === 'squats' && r.verified && r.minAngle < 180) {
@@ -279,14 +275,6 @@ export async function render(el, app) {
         assess.verified.mobility = true;
       }
       toast(`${t.title}: ${r.achieved} ${unitOf(t)} ✓${r.form ? ` · Form ${r.form.score}` : ''}`);
-      advance();
-    };
-    el.querySelector('#manual')?.addEventListener('click', () => { el.querySelector('#manualBox').hidden = false; el.querySelector('#manualVal').focus(); });
-    el.querySelector('#manualSave').onclick = () => {
-      const v = Number(el.querySelector('#manualVal').value);
-      if (!Number.isFinite(v) || v < 0 || v > 500) return toast('Enter a valid number', true);
-      assess.results[t.key] = Math.round(v);
-      assess.verified[t.key] = false;
       advance();
     };
     el.querySelector('#skip').onclick = advance;
