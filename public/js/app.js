@@ -1,0 +1,129 @@
+import { api, session } from './api.js';
+import { ICONS, esc, toast } from './ui.js';
+import { startOnboarding } from './onboarding.js';
+import * as dashboard from './views/dashboard.js';
+import * as move from './views/move.js';
+import * as setup from './views/setup.js';
+import * as passport from './views/passport.js';
+import * as campus from './views/campus.js';
+
+const root = document.getElementById('app');
+
+// Shared, in-memory app state. Everything shown comes from the server — no dummy data.
+export const store = {
+  user: null,
+  stats: null,
+  missionRequest: null, // { minutes, environment } handed from dashboard to Move
+};
+
+const ROUTES = { dashboard, move, setup, passport, campus };
+const NAV = [
+  ['dashboard', 'Dashboard', ICONS.home],
+  ['setup', 'AI Setup', ICONS.ai],
+  ['move', 'Move', ICONS.move],
+  ['passport', 'Passport', ICONS.passport],
+  ['campus', 'Campus', ICONS.campus],
+];
+
+export const app = {
+  store,
+  navigate(name) {
+    if (location.hash === '#/' + name) route();
+    else location.hash = '#/' + name;
+  },
+  async refreshStats() {
+    store.stats = await api('/stats');
+    updateLevelTag();
+    return store.stats;
+  },
+  updateLevelTag: () => updateLevelTag(),
+  async logout() {
+    try { await api('/auth/logout', { method: 'POST' }); } catch {}
+    session.clear();
+    store.user = null;
+    store.stats = null;
+    location.hash = '';
+    boot();
+  },
+};
+
+let cleanup = null;
+
+function mountShell() {
+  root.innerHTML = `
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand"><img src="/icons/icon.svg" alt="" />ATHLORA</div>
+        <span class="tag lime" id="lvlTag"></span>
+      </header>
+      <main id="view"></main>
+    </div>
+    <nav class="bottom-nav" aria-label="Main">
+      <div class="inner">
+        ${NAV.map(([key, label, icon]) => key === 'move'
+          ? `<a href="#/${key}" data-nav="${key}" class="move-tab"><span class="bubble">${icon}</span>${label}</a>`
+          : `<a href="#/${key}" data-nav="${key}">${icon}${label}</a>`).join('')}
+      </div>
+    </nav>`;
+}
+
+export function updateLevelTag() {
+  const el = document.getElementById('lvlTag');
+  if (el && store.stats) el.textContent = `LVL ${store.stats.level} · ${store.stats.xp} XP`;
+}
+
+async function route() {
+  if (!document.getElementById('view')) return;
+  const name = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'dashboard';
+  const view = ROUTES[name] || dashboard;
+  document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === (ROUTES[name] ? name : 'dashboard')));
+  if (typeof cleanup === 'function') cleanup();
+  cleanup = null;
+  const el = document.getElementById('view');
+  el.innerHTML = '<div class="spinner"></div>';
+  window.scrollTo(0, 0);
+  try {
+    cleanup = await view.render(el, app);
+    el.classList.remove('fade-in'); void el.offsetWidth; el.classList.add('fade-in');
+    updateLevelTag();
+  } catch (err) {
+    el.innerHTML = `<div class="empty">${esc(err.message)}<br/><br/><button class="btn sm" id="retry">Retry</button></div>`;
+    el.querySelector('#retry').onclick = route;
+  }
+}
+
+async function enterApp(user) {
+  store.user = user;
+  mountShell();
+  try { await app.refreshStats(); } catch (e) { toast(e.message, true); }
+  if (!location.hash || location.hash === '#/' || location.hash === '#') location.hash = '#/dashboard';
+  else route();
+}
+
+async function boot() {
+  if (!session.token) {
+    startOnboarding(root, { onDone: enterApp });
+    return;
+  }
+  root.innerHTML = '<div class="spinner" style="margin-top:40vh"></div>';
+  try {
+    const { user } = await api('/me');
+    if (!user.onboarded) {
+      startOnboarding(root, { user, onDone: enterApp });
+      return;
+    }
+    await enterApp(user);
+  } catch (err) {
+    root.innerHTML = `<div class="onb splash"><p class="muted">${esc(err.message)}</p><button class="btn primary mt-16" id="retry">Try again</button></div>`;
+    root.querySelector('#retry').onclick = boot;
+  }
+}
+
+// route() is a no-op until the app shell is mounted, so it is safe to listen from the start
+window.addEventListener('hashchange', route);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
+
+boot();
