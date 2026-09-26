@@ -7,7 +7,7 @@ const CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VER}`;
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
 
 let landmarkerPromise = null;
-function getLandmarker() {
+export function getLandmarker() {
   if (!landmarkerPromise) {
     landmarkerPromise = (async () => {
       const vision = await import(`${CDN}/vision_bundle.mjs`);
@@ -444,7 +444,7 @@ export function openTracker(o) {
       if (!lm) return;
       const W = canvas.width, H = canvas.height;
       ctx.lineWidth = 4;
-      ctx.strokeStyle = 'rgba(198,255,61,0.9)';
+      ctx.strokeStyle = 'rgba(63,180,255,0.9)';
       for (const [a, b] of BONES) {
         if ((lm[a].visibility ?? 1) < 0.5 || (lm[b].visibility ?? 1) < 0.5) continue;
         ctx.beginPath();

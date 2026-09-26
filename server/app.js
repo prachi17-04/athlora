@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const express = require('express');
 const engine = require('./engine');
 const { databaseEnvNames } = require('./kv');
+const QRCode = require('qrcode');
 
 const SESSION_TTL_MS = 60 * 24 * 60 * 60 * 1000; // 60 days
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -138,7 +139,19 @@ function computeStats(user, offset) {
 
   const todayStats = byDay[today] || { missions: 0, activeMin: 0, xp: 0 };
   const recentForm = acts.filter((a) => typeof a.formAvg === 'number' && now - a.completedAt < 14 * DAY_MS);
+  const study = user.studySessions || [];
+  const studyMin = study.reduce((s, x) => s + x.minutes, 0);
   return {
+    adaptiveTargets: engine.personalTargets(user),
+    study: {
+      sessions: study.length,
+      minutes: Math.round(studyMin),
+      // time-weighted share of study time spent in good posture
+      goodPct: studyMin ? Math.round(study.reduce((s, x) => s + x.goodPct * x.minutes, 0) / studyMin) : null,
+      breaksTaken: study.reduce((s, x) => s + x.breaksTaken, 0),
+      recent: study.slice(-5).reverse(),
+    },
+    certificates: (user.certificates || []).slice(-5).reverse(),
     form: {
       avg14: recentForm.length ? Math.round(recentForm.reduce((s, a) => s + a.formAvg, 0) / recentForm.length) : null,
       missions: recentForm.length,
@@ -154,6 +167,8 @@ function computeStats(user, offset) {
       missions: acts.length,
       activeMin: Math.round(acts.reduce((s, a) => s + a.activeMin, 0)),
       verifiedMoves: acts.reduce((s, a) => s + a.verifiedCount, 0),
+      steps: acts.reduce((s, a) => s + (a.steps || 0), 0),
+      classBreaks: acts.filter((a) => a.classBreak).length,
       comebacks: acts.filter((a) => a.comeback).length,
     },
     recent: acts.slice(-5).reverse().map((a) => ({
@@ -329,17 +344,21 @@ function createApp(kv) {
     if (score.doneCount === 0) return res.status(400).json({ error: 'Complete at least one move to finish the mission' });
 
     mission.status = 'completed';
+    // Adaptive difficulty: learn from this mission's verified results
+    const adaptations = engine.adaptTargets(u, mission, results);
+    // Steps counted by the phone's motion sensors on walking / stairs moves
+    const steps = results.reduce((s, r, i) => s + (mission.items[i]?.sensor && r?.done && r.verified ? Math.min(20000, Math.max(0, Math.round(Number(r.steps) || 0))) : 0), 0);
     u.activities = u.activities || [];
     u.activities.push({
       id: uid(), missionId: mission.id, title: mission.title, minutes: mission.minutes,
       environment: mission.environment, comeback: mission.comeback,
       xp: score.xp, activeMin: score.activeMin, verifiedCount: score.verifiedCount, doneCount: score.doneCount,
-      formAvg: score.formAvg,
+      formAvg: score.formAvg, steps,
       completedAt: Date.now(),
     });
     u.xp = (u.xp || 0) + score.xp;
     await saveUser(u);
-    res.json({ reward: score, stats: computeStats(u, offset) });
+    res.json({ reward: { ...score, steps }, adaptations, stats: computeStats(u, offset) });
   }));
 
   // =============== ASSESSMENT (AI Engine 1: Fitness Assessment) ===============
@@ -369,11 +388,14 @@ function createApp(kv) {
       breakdown.push({ label: `Improved ${growth.fgi}% since last test`, xp: bonus });
     }
     u.xp = (u.xp || 0) + xp;
-    // A fresh assessment is the best signal, so it always resets the level (students can still override it later)
+    // A fresh assessment is the best signal, so it always resets the level (students can still override it later).
+    // Learned targets are relative to the level, so a new level starts learning afresh.
+    const recalibrated = u.profile.fitnessLevel !== level && Object.keys(u.adaptiveTargets || {}).length > 0;
+    if (u.profile.fitnessLevel !== level) u.adaptiveTargets = {};
     u.profile.fitnessLevel = level;
     u.profile.levelSource = 'assessment';
     await saveUser(u);
-    res.json({ assessment: record, level, reward: { xp, breakdown }, user: publicUser(u) });
+    res.json({ assessment: record, level, recalibrated, reward: { xp, breakdown }, user: publicUser(u) });
   }));
 
   // =============== CAMPUS CHALLENGE (collective, no rankings) ===============
@@ -642,6 +664,280 @@ function createApp(kv) {
         : { students: growths.length, avgFgi: null },
       fitIndia: fitIndia.map((c) => (c.students >= MIN_GROUP ? c : { ...c, avg: null })),
       insights,
+    });
+  }));
+
+  // =============== POSTURE GUARDIAN (study sessions) ===============
+  const clampInt = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(Number(v) || 0)));
+  api.post('/study-sessions', auth, h(async (req, res) => {
+    const u = req.user;
+    const minutes = Number(req.body.minutes);
+    if (!Number.isFinite(minutes) || minutes < 1 || minutes > 600) return res.status(400).json({ error: 'Study for at least a minute to save a session' });
+    const session = {
+      at: Date.now(),
+      minutes: Math.round(minutes * 10) / 10,
+      goodPct: clampInt(req.body.goodPct, 0, 100),
+      alerts: clampInt(req.body.alerts, 0, 1000),
+      breaksTaken: clampInt(req.body.breaksTaken, 0, 50),
+    };
+    let xp = 0;
+    const breakdown = [];
+    if (minutes >= 10) {
+      const base = Math.min(20, Math.floor(minutes / 10) * 5);
+      xp += base;
+      breakdown.push({ label: 'Studied with Posture Guardian', xp: base });
+      if (session.goodPct >= 70) { xp += 5; breakdown.push({ label: 'Good posture 70%+ of the time', xp: 5 }); }
+    }
+    u.studySessions = [...(u.studySessions || []), session].slice(-200);
+    u.xp = (u.xp || 0) + xp;
+    await saveUser(u);
+    res.json({ reward: { xp, breakdown }, stats: computeStats(u, tzOffset(req)) });
+  }));
+
+  // =============== TEACHER-LED CLASS MOVEMENT BREAK ===============
+  // Projector screen + phones stay in sync by computing the current move from a shared server start time.
+  const breakKey = (code) => `break/${code}`;
+  const normCode = (c) => clean(c, 10).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const totalSec = (b) => b.moves.reduce((s, m) => s + m.sec, 0);
+  function breakStatus(b, now = Date.now()) {
+    if (b.endedAt) return 'ended';
+    if (now > b.expiresAt) return 'expired';
+    if (!b.startedAt) return 'lobby';
+    if (now < b.startedAt) return 'starting';
+    if (now > b.startedAt + totalSec(b) * 1000) return 'ended';
+    return 'running';
+  }
+  async function breakView(b) {
+    const [joined, done] = await Promise.all([kv.list(`breakp/${b.code}/`), kv.list(`breakdone/${b.code}/`)]);
+    return {
+      code: b.code, title: b.title, hostName: b.hostName, minutes: b.minutes, seated: b.seated, moves: b.moves,
+      totalSec: totalSec(b), status: breakStatus(b), startedAt: b.startedAt, serverNow: Date.now(),
+      participants: joined.length, completed: done.length,
+    };
+  }
+  async function loadBreak(req, res) {
+    const b = await kv.get(breakKey(normCode(req.params.code)));
+    if (!b) { res.status(404).json({ error: 'No class break with that code' }); return null; }
+    return b;
+  }
+  const isHost = (b, key) => typeof key === 'string' && key.length > 0 && b.hostKeyHash === hmac('break:' + key);
+
+  api.post('/breaks', auth, h(async (req, res) => {
+    const u = req.user;
+    const minutes = [2, 3, 5].includes(Number(req.body.minutes)) ? Number(req.body.minutes) : 2;
+    const seated = Boolean(req.body.seated);
+    let code;
+    do { code = Array.from({ length: 5 }, () => CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]).join(''); }
+    while (await kv.get(breakKey(code)));
+    const hostKey = crypto.randomBytes(12).toString('hex');
+    const now = Date.now();
+    await kv.set(breakKey(code), {
+      code, hostId: u.id, hostName: firstName(u), hostKeyHash: hmac('break:' + hostKey),
+      title: clean(req.body.title, 60) || 'Class movement break', minutes, seated,
+      moves: engine.classBreakRoutine(minutes, seated),
+      createdAt: now, expiresAt: now + 6 * 3600 * 1000, startedAt: null, endedAt: null,
+    });
+    res.json({ code, hostKey });
+  }));
+
+  api.get('/breaks/:code', h(async (req, res) => {
+    const b = await loadBreak(req, res);
+    if (b) res.json(await breakView(b));
+  }));
+
+  api.post('/breaks/:code/start', h(async (req, res) => {
+    const b = await loadBreak(req, res);
+    if (!b) return;
+    if (!isHost(b, req.body.hostKey)) return res.status(403).json({ error: 'Only the teacher who created this break can start it' });
+    if (['expired'].includes(breakStatus(b))) return res.status(400).json({ error: 'This break has expired. Create a new one.' });
+    b.startedAt = Date.now() + 5000; // 5-second "get ready" countdown on every screen
+    b.endedAt = null;
+    await kv.set(breakKey(b.code), b);
+    res.json(await breakView(b));
+  }));
+
+  api.post('/breaks/:code/end', h(async (req, res) => {
+    const b = await loadBreak(req, res);
+    if (!b) return;
+    if (!isHost(b, req.body.hostKey)) return res.status(403).json({ error: 'Only the teacher who created this break can end it' });
+    b.endedAt = Date.now();
+    await kv.set(breakKey(b.code), b);
+    res.json(await breakView(b));
+  }));
+
+  api.post('/breaks/:code/join', auth, h(async (req, res) => {
+    const b = await loadBreak(req, res);
+    if (!b) return;
+    const status = breakStatus(b);
+    if (status === 'ended' || status === 'expired') return res.status(400).json({ error: 'This class break has already finished' });
+    await kv.set(`breakp/${b.code}/${req.user.id}`, { at: Date.now() });
+    res.json({ ...(await breakView(b)), joined: true });
+  }));
+
+  api.post('/breaks/:code/complete', auth, h(async (req, res) => {
+    const u = req.user;
+    const b = await loadBreak(req, res);
+    if (!b) return;
+    if (!(await kv.get(`breakp/${b.code}/${u.id}`))) return res.status(400).json({ error: 'Join the break first' });
+    if (await kv.get(`breakdone/${b.code}/${u.id}`)) return res.status(400).json({ error: 'Already completed' });
+    // Must have followed most of the routine: can't claim it before 80% of the time has passed
+    if (!b.startedAt || Date.now() < b.startedAt + totalSec(b) * 800) return res.status(400).json({ error: 'The break is still running — follow along to the end' });
+
+    const offset = tzOffset(req);
+    const before = computeStats(u, offset);
+    const firstToday = before.today.missions === 0;
+    const streakAfter = firstToday ? before.streak + 1 : before.streak;
+    let xp = 15;
+    const breakdown = [{ label: 'Class movement break', xp: 15 }];
+    if (firstToday && streakAfter > 1) {
+      const bonus = 2 * Math.min(streakAfter, 10);
+      xp += bonus;
+      breakdown.push({ label: `${streakAfter}-day consistency`, xp: bonus });
+    }
+    const activeMin = Math.round((totalSec(b) / 60) * 10) / 10;
+    u.activities = [...(u.activities || []), {
+      id: uid(), title: `CLASS BREAK · ${b.title}`, minutes: b.minutes, environment: 'classroom', comeback: false,
+      classBreak: true, xp, activeMin, verifiedCount: 0, doneCount: b.moves.length, formAvg: null, steps: 0, completedAt: Date.now(),
+    }];
+    u.xp = (u.xp || 0) + xp;
+    await kv.set(`breakdone/${b.code}/${u.id}`, { at: Date.now() });
+    await saveUser(u);
+    res.json({ reward: { xp, breakdown, activeMin }, stats: computeStats(u, offset) });
+  }));
+
+  // =============== VERIFIABLE FITNESS PASSPORT CERTIFICATE ===============
+  api.post('/certificates', auth, h(async (req, res) => {
+    const u = req.user;
+    const s = computeStats(u, tzOffset(req));
+    if (!s.totals.missions && !s.baseline) return res.status(400).json({ error: 'Complete a Move Mission or your AI baseline first' });
+    let id;
+    do { id = Array.from({ length: 10 }, () => CODE_CHARS[crypto.randomInt(CODE_CHARS.length)]).join(''); }
+    while (await kv.get(`cert/${id}`));
+    const cert = {
+      id, issuedAt: Date.now(), name: u.name, memberSince: u.createdAt, community: u.campus || null,
+      level: s.level, xp: s.xp, fitnessLevel: u.profile.fitnessLevel, seatedMode: Boolean(u.profile.adaptive),
+      totals: s.totals, streak: s.streak, bestStreak: s.bestStreak,
+      growth: s.growth ? { fgi: s.growth.fgi, tests: s.growth.perTest.length, since: s.baseline.createdAt } : null,
+      fitIndia: s.fitIndia, formAvg14: s.form.avg14,
+      study: { minutes: s.study.minutes, goodPct: s.study.goodPct },
+      adaptive: s.adaptiveTargets.filter((t) => t.pct !== 0).slice(0, 4),
+    };
+    await kv.set(`cert/${id}`, cert);
+    u.certificates = [...(u.certificates || []), { id, issuedAt: cert.issuedAt }].slice(-20);
+    await saveUser(u);
+    res.json({ id });
+  }));
+
+  // Public: anyone scanning the QR code can verify the certificate
+  api.get('/certificates/:id', h(async (req, res) => {
+    const cert = await kv.get(`cert/${normCode(req.params.id)}`);
+    if (!cert) return res.status(404).json({ error: 'Certificate not found. It may be fake or mistyped.' });
+    res.json(cert);
+  }));
+
+  // QR code image (SVG) for links shown on screen
+  api.get('/qr', h(async (req, res) => {
+    const data = clean(req.query.data, 400);
+    if (!/^https?:\/\//.test(data)) return res.status(400).json({ error: 'data must be a link' });
+    const svg = await QRCode.toString(data, { type: 'svg', margin: 1, color: { dark: '#07111f', light: '#ffffff' } });
+    res.type('image/svg+xml').set('Cache-Control', 'public, max-age=86400').send(svg);
+  }));
+
+  // =============== INSTITUTION IMPACT REPORT (anonymous, exportable) ===============
+  api.post('/institution/report', rateLimit, h(async (req, res) => {
+    const ok = await checkInstitution(req, res);
+    if (!ok) return;
+    const offset = tzOffset(req);
+    const now = Date.now();
+    const prefix = K.campusPrefix(ok.campus);
+    const ids = (await kv.list(prefix)).map((k) => k.slice(prefix.length));
+    const members = (await Promise.all(ids.map((id) => kv.get(K.user(id)))))
+      .filter((m) => m && campusKey(m.campus) === campusKey(ok.campus));
+    const base = { campus: ok.inst.name, members: members.length, minGroup: MIN_GROUP, generatedAt: now };
+    if (members.length < MIN_GROUP) return res.json({ ...base, tooSmall: true });
+
+    const acts = members.flatMap((m) => (m.activities || []).map((a) => ({ ...a, uid: m.id })));
+    if (!acts.length) return res.json({ ...base, noData: true });
+
+    const mondayOf = (ts) => { const k = dayKey(ts, offset); return shiftDay(k, -((new Date(k + 'T00:00:00Z').getUTCDay() + 6) % 7)); };
+    const pilotStart = Math.min(...acts.map((a) => a.completedAt));
+    const weeks = [];
+    for (let w = mondayOf(pilotStart); w <= mondayOf(now); w = shiftDay(w, 7)) weeks.push(w);
+    const series = weeks.slice(-16).map((w) => {
+      const end = shiftDay(w, 7);
+      const wa = acts.filter((a) => { const k = dayKey(a.completedAt, offset); return k >= w && k < end; });
+      const daysByStudent = {};
+      for (const a of wa) (daysByStudent[a.uid] ||= new Set()).add(dayKey(a.completedAt, offset));
+      const done = wa.reduce((s, a) => s + (a.doneCount || 0), 0);
+      const activeMin = wa.reduce((s, a) => s + a.activeMin, 0);
+      return {
+        weekStart: w,
+        activeStudents: Object.keys(daysByStudent).length,
+        activeShare: Math.round((Object.keys(daysByStudent).length / members.length) * 100),
+        regularShare: Math.round((Object.values(daysByStudent).filter((d) => d.size >= 3).length / members.length) * 100),
+        activeMin: Math.round(activeMin),
+        avgMinPerStudent: Math.round((activeMin / members.length) * 10) / 10,
+        missions: wa.length,
+        verifiedShare: done ? Math.round((wa.reduce((s, a) => s + (a.verifiedCount || 0), 0) / done) * 100) : 0,
+        classBreaks: wa.filter((a) => a.classBreak).length,
+      };
+    });
+
+    // Before vs after: first vs most recent weeks (2 each when there are 4+ weeks)
+    let beforeAfter = null;
+    if (series.length >= 2) {
+      const n = series.length >= 4 ? 2 : 1;
+      const avg = (rows, k) => Math.round((rows.reduce((s, r) => s + r[k], 0) / rows.length) * 10) / 10;
+      const first = series.slice(0, n), last = series.slice(-n);
+      beforeAfter = {
+        weeksEach: n,
+        metrics: [
+          ['avgMinPerStudent', 'Active minutes per student per week'],
+          ['activeShare', '% of students active in a week'],
+          ['regularShare', '% moving 3+ days a week'],
+        ].map(([k, label]) => ({ key: k, label, before: avg(first, k), after: avg(last, k) })),
+      };
+    }
+
+    const sortedAssess = (m) => [...(m.assessments || [])].sort((a, b) => a.createdAt - b.createdAt);
+    const retested = members.map(sortedAssess).filter((as) => as.length >= 2);
+    const growths = retested.map((as) => engine.fitnessGrowth(as[0], as[as.length - 1])).filter(Boolean);
+    const fitIndia = engine.FIT_INDIA_COMPONENTS.map((c) => {
+      const pairs = retested.map((as) => {
+        const b = engine.fitIndiaReport(as[0].results).find((x) => x.key === c.key);
+        const l = engine.fitIndiaReport(as[as.length - 1].results).find((x) => x.key === c.key);
+        return b.measured && l.measured ? [b.score, l.score] : null;
+      }).filter(Boolean);
+      if (pairs.length < MIN_GROUP) return { key: c.key, label: c.label, students: pairs.length, baseline: null, latest: null };
+      const mean = (i) => Math.round(pairs.reduce((s, p) => s + p[i], 0) / pairs.length);
+      return { key: c.key, label: c.label, students: pairs.length, baseline: mean(0), latest: mean(1) };
+    });
+
+    const done = acts.reduce((s, a) => s + (a.doneCount || 0), 0);
+    const forms = acts.filter((a) => typeof a.formAvg === 'number');
+    const study = members.flatMap((m) => m.studySessions || []);
+    const studyMin = study.reduce((s, x) => s + x.minutes, 0);
+    res.json({
+      ...base,
+      pilotStart,
+      weeks: series,
+      beforeAfter,
+      growth: growths.length >= MIN_GROUP
+        ? { students: growths.length, avgFgi: Math.round(growths.reduce((s, g) => s + g.fgi, 0) / growths.length), improvedShare: Math.round((growths.filter((g) => g.fgi > 0).length / growths.length) * 100) }
+        : { students: growths.length, avgFgi: null, improvedShare: null },
+      fitIndia,
+      engagement: {
+        missions: acts.length,
+        activeMin: Math.round(acts.reduce((s, a) => s + a.activeMin, 0)),
+        verifiedShare: done ? Math.round((acts.reduce((s, a) => s + (a.verifiedCount || 0), 0) / done) * 100) : 0,
+        avgForm: forms.length ? Math.round(forms.reduce((s, a) => s + a.formAvg, 0) / forms.length) : null,
+        steps: acts.reduce((s, a) => s + (a.steps || 0), 0),
+        comebacks: acts.filter((a) => a.comeback).length,
+        classBreaks: acts.filter((a) => a.classBreak).length,
+        buddyLinks: Math.round(members.reduce((s, m) => s + (m.buddies || (m.buddy ? [m.buddy] : [])).length, 0) / 2),
+        studyMinutes: Math.round(studyMin),
+        postureGoodPct: studyMin ? Math.round(study.reduce((s, x) => s + x.goodPct * x.minutes, 0) / studyMin) : null,
+      },
     });
   }));
 

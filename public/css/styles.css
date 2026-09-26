@@ -1,14 +1,14 @@
 :root {
-  --bg: #0a0e13;
-  --card: #121821;
-  --card-2: #18202b;
-  --line: #243041;
-  --text: #e9eef3;
-  --muted: #8b98a8;
-  --accent: #c6ff3d;
-  --accent-ink: #0a0e13;
-  --accent-soft: rgba(198, 255, 61, 0.12);
-  --blue: #5cc8ff;
+  --bg: #07111f;
+  --card: #0d1b2e;
+  --card-2: #13243b;
+  --line: #1f3552;
+  --text: #e8f1fb;
+  --muted: #8aa2bf;
+  --accent: #3fb4ff;
+  --accent-ink: #07111f;
+  --accent-soft: rgba(63, 180, 255, 0.12);
+  --blue: #8fa8ff;
   --warn: #ffb547;
   --danger: #ff6b6b;
   --radius: 18px;
@@ -64,7 +64,7 @@ h1, h2, h3, p { margin: 0; }
   padding: 16px;
 }
 .card.hero {
-  background: radial-gradient(120% 140% at 100% 0%, rgba(198,255,61,0.16), transparent 55%), var(--card);
+  background: radial-gradient(120% 140% at 100% 0%, rgba(63,180,255,0.16), transparent 55%), var(--card);
 }
 .card.warm {
   background: radial-gradient(120% 140% at 0% 0%, rgba(255,181,71,0.18), transparent 60%), var(--card);
@@ -186,7 +186,7 @@ h1, h2, h3, p { margin: 0; }
 /* ---------- bottom nav ---------- */
 .bottom-nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
-  background: rgba(10, 14, 19, 0.92);
+  background: rgba(7, 17, 31, 0.92);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border-top: 1px solid var(--line);
@@ -296,6 +296,27 @@ h1, h2, h3, p { margin: 0; }
 .streak-banner.on .streak-num { background: linear-gradient(160deg, #ffb547, #ff6b2c); color: #1a0d00; }
 .streak-banner.on .streak-num span { color: rgba(26,13,0,.75); }
 
+/* ---------- posture guardian ---------- */
+.posture-card { border-width: 2px; transition: border-color .3s; }
+.posture-icon { font-size: 48px; font-weight: 800; line-height: 1; margin-bottom: 8px; color: var(--muted); }
+.study-preview { position: relative; width: 100%; aspect-ratio: 4 / 3; border-radius: var(--radius); overflow: hidden; background: #000; }
+.study-preview video, .study-preview canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+
+/* ---------- step tracker ---------- */
+.steps-tracker { background: var(--bg); }
+.steps-body { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: calc(24px + var(--safe-t)) 24px 24px; max-width: 480px; margin: 0 auto; width: 100%; }
+.steps-count { font-size: 92px; font-weight: 800; line-height: 1; color: var(--accent); margin: 18px 0 14px; }
+.steps-count small { display: block; font-size: 18px; color: var(--muted); font-weight: 500; margin-top: 6px; }
+.status-line { font-weight: 600; min-height: 22px; }
+.hold-btn { position: relative; overflow: hidden; user-select: none; -webkit-user-select: none; touch-action: none; }
+.hold-btn .hold-fill { position: absolute; inset: 0; width: 0; background: rgba(7,17,31,.25); }
+.hold-btn.holding .hold-fill { width: 100%; transition: width 1s linear; }
+.hold-btn .hold-label { position: relative; }
+
+/* ---------- class break ---------- */
+.break-move { font-size: 34px; font-weight: 800; line-height: 1.15; }
+.break-count { font-size: 96px; font-weight: 800; line-height: 1; color: var(--accent); font-variant-numeric: tabular-nums; }
+
 .form-chip {
   display: inline-block; margin-top: 8px; padding: 5px 10px; border-radius: 999px;
   font-weight: 700; font-size: 14px; background: rgba(0,0,0,.55); color: #fff;
@@ -326,12 +347,12 @@ h1, h2, h3, p { margin: 0; }
 /* ---------- passport ---------- */
 .passport {
   border-radius: 22px; padding: 20px; position: relative; overflow: hidden;
-  background: linear-gradient(140deg, #1a2410 0%, #121821 45%, #0f1a24 100%);
-  border: 1px solid rgba(198,255,61,.25);
+  background: linear-gradient(140deg, #0b2447 0%, #0d1b2e 45%, #0a1f3a 100%);
+  border: 1px solid rgba(63,180,255,.25);
 }
 .passport::after {
   content: 'ATHLORA'; position: absolute; right: -10px; bottom: -18px;
-  font-size: 76px; font-weight: 800; letter-spacing: .1em; color: rgba(198,255,61,.05);
+  font-size: 76px; font-weight: 800; letter-spacing: .1em; color: rgba(63,180,255,.05);
 }
 .passport .pid { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--muted); letter-spacing: .15em; }
 .passport .pname { font-size: 26px; font-weight: 800; margin-top: 12px; }

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ATHLORA · Class Movement Break</title>
+  <meta name="theme-color" content="#07111f" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .proj { min-height: 100dvh; display: flex; flex-direction: column; padding: calc(20px + var(--safe-t)) 24px calc(24px + var(--safe-b)); max-width: 1200px; margin: 0 auto; }
+    .proj-main { flex: 1; display: grid; place-items: center; text-align: center; }
+    .lobby { display: grid; grid-template-columns: auto 1fr; gap: 40px; align-items: center; text-align: left; }
+    .lobby img { width: min(38vw, 300px); aspect-ratio: 1; background: #fff; border-radius: 16px; padding: 10px; }
+    .big-code { font-family: ui-monospace, Consolas, monospace; font-size: clamp(48px, 9vw, 110px); font-weight: 800; letter-spacing: .15em; color: var(--accent); line-height: 1; }
+    .p-move { font-size: clamp(40px, 7vw, 96px); font-weight: 800; line-height: 1.05; }
+    .p-count { font-size: clamp(90px, 18vw, 240px); font-weight: 800; color: var(--accent); line-height: 1; font-variant-numeric: tabular-nums; }
+    .p-cue { font-size: clamp(18px, 2.4vw, 30px); color: var(--muted); max-width: 900px; margin: 12px auto 0; }
+    .p-foot { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+    @media (max-width: 700px) { .lobby { grid-template-columns: 1fr; text-align: center; justify-items: center; } }
+  </style>
+</head>
+<body>
+  <div class="proj" id="root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/js/break-screen.js"></script>
+</body>
+</html>

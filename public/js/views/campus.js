@@ -45,6 +45,77 @@ function buddySection(b) {
     </section>`;
 }
 
+// Teacher-led class movement break: create (teacher) or join with a code (student)
+const HOSTED_KEY = 'athlora_hosted_breaks';
+function hostedBreaks() {
+  try { return (JSON.parse(localStorage.getItem(HOSTED_KEY)) || []).filter((b) => Date.now() - b.createdAt < 6 * 3600 * 1000); } catch { return []; }
+}
+function rememberHosted(b) {
+  try { localStorage.setItem(HOSTED_KEY, JSON.stringify([b, ...hostedBreaks()].slice(0, 5))); } catch {}
+}
+
+function classBreakSection() {
+  const mine = hostedBreaks();
+  return `
+    <div class="section-title">Class movement break</div>
+    <section class="card">
+      <h3>Join a class break</h3>
+      <p class="tiny muted mt-8">Enter the code on your classroom screen, or scan its QR code.</p>
+      <div class="row mt-8">
+        <input class="input sm" id="breakCode" placeholder="Class code" maxlength="5" style="text-transform:uppercase" />
+        <button class="btn sm" id="joinBreak">Join</button>
+      </div>
+      <p class="upper mt-16">Teachers: lead a break</p>
+      <p class="tiny muted mt-8">Put a 2–5 minute desk-side routine on the projector. Students join on their phones, everyone moves in sync, and each student earns XP and keeps their streak.</p>
+      <div class="chips mt-8" id="breakMin">
+        ${[2, 3, 5].map((m) => `<button type="button" class="chip ${m === 2 ? 'on' : ''}" data-value="${m}">${m} min</button>`).join('')}
+      </div>
+      <div class="chips mt-8" id="breakMode">
+        <button type="button" class="chip on" data-value="standing">Standing</button>
+        <button type="button" class="chip" data-value="seated">Seated</button>
+      </div>
+      <button class="btn ghost block mt-16" id="createBreak">Create class break</button>
+      <div id="breakCreated">
+        ${mine.map((b) => `
+          <div class="opp">
+            <div class="what"><b>Code ${esc(b.code)}</b><span class="tiny muted">${b.minutes} min · created ${new Date(b.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span></div>
+            <a class="btn sm primary" href="/break.html#${esc(b.code)}.${esc(b.hostKey)}" target="_blank" rel="noopener">Open projector</a>
+          </div>`).join('')}
+      </div>
+    </section>`;
+}
+
+function bindClassBreak(el, app) {
+  const pick = (id) => el.querySelector(`#${id} .chip.on`)?.dataset.value;
+  for (const id of ['breakMin', 'breakMode']) {
+    el.querySelector(`#${id}`)?.addEventListener('click', (e) => {
+      const c = e.target.closest('.chip');
+      if (!c) return;
+      el.querySelectorAll(`#${id} .chip`).forEach((x) => x.classList.toggle('on', x === c));
+    });
+  }
+  const join = () => {
+    const code = el.querySelector('#breakCode').value.trim().toUpperCase();
+    if (code.length < 5) return toast('Enter the 5-character class code', true);
+    app.navigate(`break/${code}`);
+  };
+  el.querySelector('#joinBreak')?.addEventListener('click', join);
+  el.querySelector('#breakCode')?.addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
+  el.querySelector('#createBreak')?.addEventListener('click', async () => {
+    try {
+      const minutes = Number(pick('breakMin'));
+      const r = await api('/breaks', { method: 'POST', body: { minutes, seated: pick('breakMode') === 'seated' } });
+      rememberHosted({ code: r.code, hostKey: r.hostKey, minutes, createdAt: Date.now() });
+      el.querySelector('#breakCreated').insertAdjacentHTML('afterbegin', `
+        <div class="opp now">
+          <div class="what"><b>Code ${esc(r.code)}</b><span class="tiny muted">Ready. Open it on the classroom screen.</span></div>
+          <a class="btn sm primary" href="/break.html#${esc(r.code)}.${esc(r.hostKey)}" target="_blank" rel="noopener">Open projector</a>
+        </div>`);
+      toast(`Class break ${r.code} created`);
+    } catch (err) { toast(err.message, true); }
+  });
+}
+
 // Community challenge: everyone moves one shared bar. No rankings, no leaderboard.
 export async function render(el, app) {
   const { store } = app;
@@ -98,8 +169,9 @@ export async function render(el, app) {
     const [c, buddy] = await Promise.all([api('/campus'), api('/buddy').catch(() => null)]);
     if (!c.campus) {
       drawJoin();
-      el.querySelector('.stack').insertAdjacentHTML('beforeend', buddySection(buddy) + institutionLink);
+      el.querySelector('.stack').insertAdjacentHTML('beforeend', buddySection(buddy) + classBreakSection() + institutionLink);
       bindBuddy(buddy);
+      bindClassBreak(el, app);
       return;
     }
 
@@ -143,11 +215,13 @@ export async function render(el, app) {
         <p class="small muted center">Invite others: they join by entering the same community name.</p>
         <button class="link" id="change" style="color:var(--muted)">Change community</button>
         ${buddySection(buddy)}
+        ${classBreakSection()}
         ${institutionLink}
       </div>`;
     el.querySelector('#move').onclick = () => app.navigate('move');
     el.querySelector('#change').onclick = () => drawJoin(c.campus);
     bindBuddy(buddy);
+    bindClassBreak(el, app);
   }
 
   function drawJoin(existing = '') {

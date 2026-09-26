@@ -6,6 +6,8 @@ import * as move from './views/move.js';
 import * as setup from './views/setup.js';
 import * as passport from './views/passport.js';
 import * as community from './views/campus.js';
+import * as study from './views/study.js';
+import * as classBreak from './views/break.js';
 
 const root = document.getElementById('app');
 
@@ -16,7 +18,7 @@ export const store = {
   missionRequest: null, // { minutes, environment } handed from dashboard to Move
 };
 
-const ROUTES = { dashboard, move, setup, passport, community, campus: community };
+const ROUTES = { dashboard, move, setup, passport, community, campus: community, study, break: classBreak };
 const NAV = [
   ['dashboard', 'Dashboard', ICONS.home],
   ['setup', 'AI Setup', ICONS.ai],
@@ -75,7 +77,10 @@ export function updateLevelTag() {
 async function route() {
   if (!document.getElementById('view')) return;
   const [path, query] = location.hash.replace(/^#\/?/, '').split('?');
-  const name = path || 'dashboard';
+  // Routes can carry one parameter, e.g. #/break/AB3CD
+  const [base, param] = (path || '').split('/');
+  const name = base || 'dashboard';
+  store.routeParam = param || null;
   // Mission links from opportunity reminders: #/move?min=12&env=campus
   if (name === 'move' && query) {
     const q = new URLSearchParams(query);
@@ -84,7 +89,7 @@ async function route() {
     history.replaceState(null, '', '#/move');
   }
   const view = ROUTES[name] || dashboard;
-  const navKey = name === 'campus' ? 'community' : ROUTES[name] ? name : 'dashboard';
+  const navKey = { campus: 'community', break: 'community', study: 'dashboard' }[name] || (ROUTES[name] ? name : 'dashboard');
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;

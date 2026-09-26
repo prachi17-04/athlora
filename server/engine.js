@@ -13,11 +13,12 @@ const ACTIVE = ['room', 'hostel', 'campus', 'playground'];
 // unit: 'reps' | 'sec' | 'floors'; amount per level [beginner, intermediate, advanced]
 // secPer: estimated seconds per unit, used to fit the time budget
 const MOVES = [
-  { id: 'brisk_walk', name: 'Brisk walk', cat: 'endurance', unit: 'sec', amount: [120, 120, 120], secPer: 1, flex: true,
+  // sensor: 'steps' = verifiable with the phone's motion sensors (no wearable needed)
+  { id: 'brisk_walk', name: 'Brisk walk', cat: 'endurance', unit: 'sec', amount: [120, 120, 120], secPer: 1, flex: true, sensor: 'steps',
     env: ['campus', 'hostel', 'playground'], cue: 'Walk fast enough that talking feels slightly harder.' },
-  { id: 'march', name: 'March in place', cat: 'endurance', unit: 'sec', amount: [60, 60, 60], secPer: 1, flex: true,
+  { id: 'march', name: 'March in place', cat: 'endurance', unit: 'sec', amount: [60, 60, 60], secPer: 1, flex: true, sensor: 'steps',
     env: ['room', 'hostel'], cue: 'Lift knees to hip height, swing your arms.' },
-  { id: 'stairs', name: 'Climb stairs', cat: 'endurance', unit: 'floors', amount: [2, 3, 4], secPer: 30, equip: 'stairs',
+  { id: 'stairs', name: 'Climb stairs', cat: 'endurance', unit: 'floors', amount: [2, 3, 4], secPer: 30, equip: 'stairs', sensor: 'steps',
     env: ['hostel', 'campus'], cue: 'Up at a steady pace, walk down carefully.' },
   { id: 'squats', name: 'Squats', cat: 'strength', unit: 'reps', amount: [10, 15, 20], secPer: 3, cv: 'squat',
     env: ACTIVE, cue: 'Feet shoulder-width, hips back, thighs toward parallel.' },
@@ -96,14 +97,86 @@ function weightedPick(list, weightFn) {
   return list[list.length - 1];
 }
 
-function makeItem(move, amount, label) {
+// ---------- Adaptive difficulty: each student's targets learn from their verified results ----------
+const round5 = (n) => Math.round(n / 5) * 5;
+function scaleAmount(move, base, factor) {
+  if (move.flex || factor === 1) return base;
+  const v = base * factor;
+  return move.unit === 'sec' ? Math.max(10, round5(v)) : Math.max(1, Math.round(v));
+}
+function personalAmount(user, move, li, { learn = true } = {}) {
+  const factor = learn ? user.adaptiveTargets?.[move.id]?.factor ?? 1 : 1;
+  return scaleAmount(move, move.amount[li], factor);
+}
+
+/**
+ * Updates user.adaptiveTargets from a completed mission.
+ * strong = verified (camera/sensor), target met, form 80+ ; weak = skipped, < 70% of target, or form < 55.
+ * Two strong results in a row raise the target 10%; two weak ones lower it 10%. Unverified work never raises it.
+ * @returns changes [{ moveId, name, unit, from, to, direction }]
+ */
+function adaptTargets(user, mission, results) {
+  if (mission.comeback) return [];
+  const state = (user.adaptiveTargets ||= {});
+  const li = LEVELS.indexOf(mission.level) === -1 ? levelIndex(user) : LEVELS.indexOf(mission.level);
+  const changes = [];
+  const byMove = new Map();
+  mission.items.forEach((item, i) => {
+    if (!byMove.has(item.moveId)) byMove.set(item.moveId, []);
+    byMove.get(item.moveId).push({ item, r: results[i] || {} });
+  });
+  for (const [moveId, rounds] of byMove) {
+    const move = MOVES.find((m) => m.id === moveId);
+    if (!move || move.flex) continue;
+    const judge = ({ item, r }) => {
+      const ratio = r.done ? Math.min(1, (Number(r.achieved ?? item.target) || 0) / item.target) : 0;
+      const form = Number.isFinite(Number(r.formScore)) && r.formScore !== null ? Number(r.formScore) : null;
+      const verified = Boolean(r.verified && (item.cv || item.sensor));
+      if (!r.done || ratio < 0.7 || (verified && form !== null && form < 55)) return 'weak';
+      if (verified && ratio >= 1 && (form === null || form >= 80)) return 'strong';
+      return 'neutral';
+    };
+    const verdicts = rounds.map(judge);
+    const verdict = verdicts.includes('weak') ? 'weak' : verdicts.every((v) => v === 'strong') ? 'strong' : 'neutral';
+    const s = (state[moveId] ||= { factor: 1, good: 0, bad: 0, history: [] });
+    s.history = [...s.history, { at: Date.now(), verdict, target: rounds[0].item.target }].slice(-12);
+    if (verdict === 'strong') { s.good++; s.bad = 0; }
+    else if (verdict === 'weak') { s.bad++; s.good = 0; }
+    const before = scaleAmount(move, move.amount[li], s.factor);
+    if (s.good >= 2) { s.factor = Math.min(2.5, Math.round(s.factor * 1.1 * 100) / 100); s.good = 0; }
+    if (s.bad >= 2) { s.factor = Math.max(0.6, Math.round(s.factor * 0.9 * 100) / 100); s.bad = 0; }
+    const after = scaleAmount(move, move.amount[li], s.factor);
+    if (after !== before) changes.push({ moveId, name: move.name, unit: move.unit, from: before, to: after, direction: after > before ? 'up' : 'down' });
+  }
+  return changes;
+}
+
+// Personal targets for the Passport: starting target at the student's level vs the learned one
+function personalTargets(user) {
+  const li = levelIndex(user);
+  return Object.entries(user.adaptiveTargets || {})
+    .map(([moveId, s]) => {
+      const move = MOVES.find((m) => m.id === moveId);
+      if (!move || move.flex) return null;
+      const start = move.amount[li];
+      const current = scaleAmount(move, start, s.factor);
+      return { moveId, name: move.name, unit: move.unit, start, current, pct: Math.round((current / start - 1) * 100), sessions: s.history.length };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.sessions - a.sessions);
+}
+
+function makeItem(move, amount, label, baseAmount = amount) {
   const sec = estSeconds(move, amount);
   return {
     moveId: move.id,
     name: label || move.name,
     unit: move.unit,
     target: amount,
+    baseTarget: baseAmount,
+    personalized: amount !== baseAmount,
     cv: move.cv || null,
+    sensor: move.sensor || null,
     cue: move.cue,
     estSec: sec,
     xp: xpFor(sec),
@@ -153,9 +226,11 @@ function generateMission(user, ctx, recent) {
   const items = [];
   const usedIds = new Set();
   const fits = (sec) => used + sec + TRANSITION <= budget + 15;
+  // Personal (learned) amounts, except in comeback missions which stay easy
+  const amt = (m) => personalAmount(user, m, li, { learn: !comeback });
   const add = (move, label) => {
-    const amount = move.amount[li];
-    const item = makeItem(move, amount, label);
+    const amount = amt(move);
+    const item = makeItem(move, amount, label, move.amount[li]);
     items.push(item);
     usedIds.add(move.id);
     used += item.estSec + TRANSITION;
@@ -168,7 +243,7 @@ function generateMission(user, ctx, recent) {
 
   // 2. Reserve room for a finisher stretch on longer missions
   const finisher = pool.find((m) => m.finisher);
-  const reserve = !classroom && minutes >= 5 && finisher ? estSeconds(finisher, finisher.amount[li]) + TRANSITION : 0;
+  const reserve = !classroom && minutes >= 5 && finisher ? estSeconds(finisher, amt(finisher)) + TRANSITION : 0;
 
   // 3. Main block: a few distinct moves weighted toward the student's goal,
   //    repeated in rounds when there is time (a focused mission beats a long list)
@@ -177,7 +252,7 @@ function generateMission(user, ctx, recent) {
   const mainSet = [];
   for (let guard = 0; guard < 40 && mainSet.length < maxMain; guard++) {
     const candidates = pool.filter((m) => !usedIds.has(m.id) && !m.finisher && !m.flex &&
-      fits(estSeconds(m, m.amount[li]) + reserve));
+      fits(estSeconds(m, amt(m)) + reserve));
     if (!candidates.length) break;
     const m = weightedPick(candidates, weight);
     add(m);
@@ -188,7 +263,7 @@ function generateMission(user, ctx, recent) {
   for (let round = 2; round <= maxRounds && mainSet.length; round++) {
     let added = 0;
     for (const m of mainSet) {
-      if (!fits(estSeconds(m, m.amount[li]) + reserve)) continue;
+      if (!fits(estSeconds(m, amt(m)) + reserve)) continue;
       add(m, `${m.name} (round ${round})`);
       added++;
     }
@@ -247,13 +322,13 @@ function scoreMission(mission, results, { firstToday, streakAfter, buddiesMovedT
     doneCount++;
     const achieved = Math.max(0, Number(r.achieved ?? item.target) || 0);
     const ratio = Math.min(1, achieved / item.target);
-    const verified = Boolean(r.verified && item.cv);
+    const verified = Boolean(r.verified && (item.cv || item.sensor));
     if (verified) verifiedCount++;
     const itemXp = Math.round(item.xp * ratio * (verified ? 1.5 : 1));
     xp += itemXp;
     activeSec += item.estSec * ratio;
-    const form = Number(r.formScore);
-    if (verified && Number.isFinite(form) && form >= 0 && form <= 100) {
+    const form = r.formScore === null || r.formScore === undefined ? NaN : Number(r.formScore);
+    if (verified && item.cv && Number.isFinite(form) && form >= 0 && form <= 100) {
       formScores.push(form);
       if (form >= 80) formXp += Math.round(itemXp * 0.2);
     }
@@ -408,8 +483,44 @@ function fitnessGrowth(baseline, latest) {
   return { fgi, perTest };
 }
 
+// ---------- Teacher-led class movement break ----------
+// Desk-side routines for a whole class: 20 seconds per move, no equipment, no noise.
+const BREAK_MOVES = {
+  standing: [
+    { name: 'Stand tall & reach up', cue: 'Stand up, reach both arms high and stretch tall.' },
+    { name: 'March on the spot', cue: 'Lift your knees and swing your arms.' },
+    { name: 'Shoulder rolls', cue: 'Big slow circles backwards, then forwards.' },
+    { name: 'Torso twist', cue: 'Hands on hips, twist gently left and right.' },
+    { name: 'Calf raises', cue: 'Rise onto your toes, then lower slowly.' },
+    { name: 'Desk push-ups', cue: 'Hands on the desk edge, lower your chest, push away.' },
+    { name: 'Side stretch', cue: 'Reach one arm over your head and lean. Switch sides.' },
+    { name: 'Deep breaths', cue: 'Breathe in for 4, out for 6. Relax your shoulders.' },
+  ],
+  seated: [
+    { name: 'Posture reset', cue: 'Sit tall, shoulder blades back and down.' },
+    { name: 'Seated march', cue: 'Lift your knees alternately, pump your arms.' },
+    { name: 'Shoulder rolls', cue: 'Big slow circles backwards, then forwards.' },
+    { name: 'Seated arm raises', cue: 'Raise both arms overhead, then lower.' },
+    { name: 'Seated torso twist', cue: 'Hands on shoulders, rotate slowly left and right.' },
+    { name: 'Ankle circles', cue: 'Circle each ankle under the desk.' },
+    { name: 'Neck release', cue: 'Ear toward shoulder, hold, switch sides. Gently.' },
+    { name: 'Deep breaths', cue: 'Breathe in for 4, out for 6. Relax.' },
+  ],
+};
+const BREAK_MOVE_SEC = 20;
+
+function classBreakRoutine(minutes, seated) {
+  const list = BREAK_MOVES[seated ? 'seated' : 'standing'];
+  const count = Math.max(3, Math.floor((minutes * 60) / BREAK_MOVE_SEC));
+  // End every routine on the calming final move
+  const moves = Array.from({ length: count - 1 }, (_, i) => list[i % (list.length - 1)]);
+  moves.push(list[list.length - 1]);
+  return moves.map((m) => ({ ...m, sec: BREAK_MOVE_SEC }));
+}
+
 module.exports = {
   LEVELS, ENVIRONMENTS, EQUIPMENT, GOALS, TESTS, FIT_INDIA_COMPONENTS,
   generateMission, scoreMission, levelFromAssessment, fitnessGrowth,
   fitIndiaReport, findOpportunities, toMin,
+  adaptTargets, personalTargets, classBreakRoutine,
 };

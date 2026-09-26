@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>ATHLORA · Institution Dashboard</title>
-  <meta name="theme-color" content="#0a0e13" />
+  <meta name="theme-color" content="#07111f" />
   <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -16,6 +16,15 @@
     .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
     .insight { padding: 12px 14px; border-left: 3px solid var(--accent); background: var(--card-2); border-radius: 10px; }
     #toast { bottom: calc(24px + var(--safe-b)); }
+    .rtable { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    .rtable th, .rtable td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    .rtable th { color: var(--muted); font-weight: 600; }
+    @media print {
+      :root { --bg: #fff; --card: #fff; --card-2: #f3f5f7; --line: #d7dde3; --text: #07111f; --muted: #4c5a6a; --accent: #0b5cad; }
+      body { background: #fff !important; color: #07111f; }
+      .no-print, .topbar button { display: none !important; }
+      .card, .stat { break-inside: avoid; }
+    }
   </style>
 </head>
 <body>

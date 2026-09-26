@@ -1,6 +1,7 @@
 import { api } from '../api.js';
 import { esc, toast, chips, bindChips, chipValue, fmtTarget, TIME_OPTIONS, ENV_OPTIONS, EQUIP_OPTIONS, ICONS } from '../ui.js';
 import { openTracker } from '../tracker.js';
+import { openStepTracker, motionSupported } from '../sensors.js';
 
 // Survives tab switches so a mission in progress isn't lost
 let current = null; // { mission, params, results: [], index: -1, reward? }
@@ -79,14 +80,16 @@ export async function render(el, app) {
             ${m.items.map((it, i) => `
               <div class="move-item">
                 <span class="n">${i + 1}</span>
-                <div class="t"><b>${esc(it.name)}</b><span class="small muted">${fmtTarget(it)}</span></div>
-                ${it.cv ? `<span class="cam" title="Camera-verifiable">${ICONS.camera}</span>` : ''}
+                <div class="t"><b>${esc(it.name)}</b><span class="small muted">${fmtTarget(it)}${it.personalized
+                  ? ` · <span class="accent">🧠 ${it.target > it.baseTarget ? '+' : ''}${it.target - it.baseTarget} for you</span>` : ''}</span></div>
+                ${it.cv ? `<span class="cam" title="Camera-verifiable">${ICONS.camera}</span>` : it.sensor ? '<span class="cam" title="Phone-sensor verifiable">👟</span>' : ''}
               </div>`).join('')}
           </div>
           <div class="row between mt-16">
             <span class="muted">Reward</span>
             <b class="accent">up to +${m.maxXp} Fitness XP</b>
           </div>
+          ${m.items.some((it) => it.personalized) ? '<p class="tiny muted mt-8">🧠 Targets marked "for you" were learned from your own verified results.</p>' : ''}
           ${m.followUp ? `<p class="note mt-16">After class: ${esc(m.followUp.text)}.</p>` : ''}
         </section>
         <button class="btn primary block" id="start">START</button>
@@ -133,6 +136,9 @@ export async function render(el, app) {
         ${it.cv ? `
           <button class="btn primary block" id="verify">${ICONS.camera} Verify with camera</button>
           <button class="btn ghost block" id="manual">Done without camera</button>`
+        : it.sensor && motionSupported() ? `
+          <button class="btn primary block" id="stepsBtn">👟 Track with phone sensors</button>
+          <button class="btn ghost block" id="manual">Mark done without tracking</button>`
         : timed ? `
           <button class="btn primary block" id="timerBtn">Start timer</button>
           <button class="btn ghost block" id="manual">Mark done</button>`
@@ -158,6 +164,16 @@ export async function render(el, app) {
       if (r.form) return showForm(it, r, result);
       if (r.achieved < it.target) toast(`Verified ${r.achieved}/${it.target} — partial credit`);
       next(result);
+    });
+
+    el.querySelector('#stepsBtn')?.addEventListener('click', async () => {
+      const r = await openStepTracker({ title: it.name, unit: it.unit, target: it.target });
+      if (!r) return;
+      if (!r.steps) return toast('No steps detected. Try again with the phone in your hand or pocket.', true);
+      toast(r.verified
+        ? `👟 ${r.steps} steps · ${r.cadence} steps/min — sensor-verified ✓`
+        : `👟 ${r.steps} steps counted — not enough to verify, counted as done`);
+      next({ done: true, verified: r.verified, achieved: r.achieved || (r.verified ? it.target : Math.max(1, r.achieved)), steps: r.steps, cadence: r.cadence });
     });
 
     el.querySelector('#timerBtn')?.addEventListener('click', (e) => {
@@ -206,6 +222,7 @@ export async function render(el, app) {
     try {
       const r = await api(`/missions/${current.mission.id}/complete`, { method: 'POST', body: { results: current.results } });
       current.reward = r.reward;
+      current.adaptations = r.adaptations || [];
       current.stats = r.stats;
       store.stats = r.stats;
       app.updateLevelTag();
@@ -218,7 +235,8 @@ export async function render(el, app) {
 
   // ---------- 4. Reward ----------
   function drawReward() {
-    const { reward, mission, stats } = current;
+    const { reward, mission, stats, adaptations = [] } = current;
+    const unitOf = (a) => (a.unit === 'sec' ? ' s' : a.unit === 'floors' ? ' floors' : '');
     el.innerHTML = `
       <div class="stack center">
         <div class="upper mt-16">Mission complete</div>
@@ -240,11 +258,24 @@ export async function render(el, app) {
           <div class="stat"><div class="v">${stats.streak}</div><div class="l">day streak</div></div>
           <div class="stat"><div class="v">${reward.formAvg ?? '—'}</div><div class="l">avg form score</div></div>
         </div>
+        ${reward.steps ? `<p class="small muted">👟 ${reward.steps} sensor-verified steps</p>` : ''}
+        ${adaptations.length ? `
+          <section class="card" style="text-align:left">
+            <div class="upper">🧠 ATHLORA adapted to you</div>
+            ${adaptations.map((a) => `
+              <div class="reward-line"><span>${esc(a.name)}</span>
+                <b style="color:${a.direction === 'up' ? 'var(--accent)' : 'var(--warn)'}">${a.from}${unitOf(a)} → ${a.to}${unitOf(a)} ${a.direction === 'up' ? '↑' : '↓'}</b></div>`).join('')}
+            <p class="tiny muted mt-8">${adaptations.some((a) => a.direction === 'up')
+              ? 'Two strong, verified sessions in a row, so your next target is a little higher.'
+              : 'It felt tough twice in a row, so your next target is a little easier. That\'s how progress sticks.'}</p>
+          </section>` : ''}
         ${mission.followUp ? `<button class="btn ghost block" id="follow">Set up: ${esc(mission.followUp.text)}</button>` : ''}
-        <button class="btn primary block" id="home">Back to dashboard</button>
+        ${store.returnTo === 'study' ? '<button class="btn primary block" id="backStudy">Back to studying 📚</button>' : ''}
+        <button class="btn ${store.returnTo === 'study' ? 'ghost' : 'primary'} block" id="home">Back to dashboard</button>
         <button class="btn ghost block" id="again">Another mission</button>
       </div>`;
     el.querySelector('#home').onclick = () => { current = null; app.navigate('dashboard'); };
+    el.querySelector('#backStudy')?.addEventListener('click', () => { current = null; app.navigate('study'); });
     el.querySelector('#again').onclick = () => { current = null; draw(); };
     el.querySelector('#follow')?.addEventListener('click', () => {
       const f = mission.followUp;

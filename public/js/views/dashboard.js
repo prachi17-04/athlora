@@ -205,6 +205,14 @@ export async function render(el, app) {
 
       ${opportunitiesCard(opps)}
 
+      <section class="card" id="studyGo" style="cursor:pointer">
+        <div class="row between">
+          <div><div class="upper">Study mode</div><h3 style="margin-top:4px">📚 Posture Guardian</h3></div>
+          <span class="tag lime">${stats.study.sessions ? `${stats.study.goodPct ?? '—'}% good posture` : 'New'}</span>
+        </div>
+        <p class="small muted mt-8">Studying for a while? ATHLORA watches your posture and sitting time on-device, and nudges you to move before it becomes a habit.</p>
+      </section>
+
       ${buddyCard(buddy)}
 
       <section class="card hero">
@@ -262,6 +270,7 @@ export async function render(el, app) {
   el.querySelector('#goSetup')?.addEventListener('click', () => app.navigate('setup'));
   el.querySelector('#addTimetable')?.addEventListener('click', () => { store.scrollTo = 'timetable'; app.navigate('setup'); });
   el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('community'));
+  el.querySelector('#studyGo').onclick = () => app.navigate('study');
   el.querySelector('#streakGo')?.addEventListener('click', () => {
     store.missionRequest = { minutes: 3, environment: u.profile.environment || 'room' };
     app.navigate('move');

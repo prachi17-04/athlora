@@ -1,4 +1,5 @@
-import { esc, fmtDate } from '../ui.js';
+import { api } from '../api.js';
+import { esc, fmtDate, toast } from '../ui.js';
 
 const TEST_LABELS = {
   squats: 'Squats (30s)', pushups: 'Push-ups (30s)', jumpingJacks: 'Jumping jacks (30s)',
@@ -77,7 +78,7 @@ function compareBlock(growth, baseline) {
   }
   return `
     <div class="row small" style="gap:14px;margin-bottom:10px">
-      <span class="row" style="gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#5a6675"></span>Baseline</span>
+      <span class="row" style="gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#4a607c"></span>Baseline</span>
       <span class="row" style="gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--accent)"></span>Latest</span>
     </div>
     <div class="stack" style="gap:14px">
@@ -88,7 +89,7 @@ function compareBlock(growth, baseline) {
             <span>${esc(p.label)}</span>
             <b style="color:${p.pct >= 0 ? 'var(--accent)' : 'var(--warn)'}">${p.pct >= 0 ? '+' : ''}${p.pct}%</b>
             <div class="bars">
-              <div class="row" style="gap:8px"><div class="bar" style="flex:1"><div style="width:${(p.baseline / max) * 100}%;background:#5a6675"></div></div><span class="tiny muted" style="width:28px;text-align:right">${p.baseline}</span></div>
+              <div class="row" style="gap:8px"><div class="bar" style="flex:1"><div style="width:${(p.baseline / max) * 100}%;background:#4a607c"></div></div><span class="tiny muted" style="width:28px;text-align:right">${p.baseline}</span></div>
               <div class="row" style="gap:8px"><div class="bar" style="flex:1"><div style="width:${(p.latest / max) * 100}%"></div></div><span class="tiny" style="width:28px;text-align:right">${p.latest}</span></div>
             </div>
           </div>`;
@@ -152,6 +153,27 @@ export async function render(el, app) {
       ${fitIndiaCard(s)}
 
       <section class="card">
+        <div class="row between"><div class="upper">🧠 Your adaptive targets</div><span class="tag">learns from you</span></div>
+        ${s.adaptiveTargets.length ? `
+          <p class="small muted mt-8">ATHLORA adjusts each move to you: two strong, verified sessions raise a target, two tough ones ease it.</p>
+          <div class="mt-8">
+            ${s.adaptiveTargets.slice(0, 8).map((t) => `
+              <div class="reward-line"><span>${esc(t.name)}</span>
+                <b style="color:${t.pct > 0 ? 'var(--accent)' : t.pct < 0 ? 'var(--warn)' : 'var(--text)'}">${t.start} → ${t.current}${t.unit === 'sec' ? ' s' : t.unit === 'floors' ? ' floors' : ''}${t.pct ? ` (${t.pct > 0 ? '+' : ''}${t.pct}%)` : ''}</b></div>`).join('')}
+          </div>`
+        : '<p class="small muted mt-8">Complete camera- or sensor-verified missions, and ATHLORA will start tuning each move\'s target to you.</p>'}
+      </section>
+
+      <section class="card">
+        <div class="row between"><div class="upper">Verified Fitness Certificate</div><span class="tag lime">QR verified</span></div>
+        <p class="small muted mt-8">A shareable certificate of your verified activity, growth and Fit India results. Anyone (your school, college or a recruiter) can scan its QR code to confirm it's genuine.</p>
+        <button class="btn primary block mt-16" id="makeCert">Create my certificate</button>
+        ${s.certificates.length ? `<div class="mt-8">${s.certificates.map((c) => `
+          <div class="reward-line"><span class="small">Issued ${fmtDate(c.issuedAt)}</span>
+            <a class="link" href="/verify.html?id=${esc(c.id)}" target="_blank" rel="noopener">Open ↗</a></div>`).join('')}</div>` : ''}
+      </section>
+
+      <section class="card">
         <div class="row between"><h3>Active minutes · last 14 days</h3></div>
         <p class="small muted mt-8" id="chartReadout">${anyActivity ? 'Tap a bar for details' : '&nbsp;'}</p>
         <div class="mt-8" style="position:relative">
@@ -165,6 +187,10 @@ export async function render(el, app) {
         <div class="stat"><div class="v">${s.totals.activeMin}</div><div class="l">Active minutes</div></div>
         <div class="stat"><div class="v">${s.totals.verifiedMoves}</div><div class="l">Camera-verified moves</div></div>
         <div class="stat"><div class="v">${s.bestStreak}</div><div class="l">Best streak (days)</div></div>
+        <div class="stat"><div class="v">${s.totals.steps.toLocaleString()}</div><div class="l">Sensor-verified steps</div></div>
+        <div class="stat"><div class="v">${s.study.minutes}${s.study.goodPct !== null ? `<span class="small muted"> · ${s.study.goodPct}%</span>` : ''}</div><div class="l">Study min · good posture</div></div>
+        <div class="stat"><div class="v">${s.totals.classBreaks}</div><div class="l">Class breaks joined</div></div>
+        <div class="stat"><div class="v">${s.study.breaksTaken}</div><div class="l">Study move breaks</div></div>
         <div class="stat" style="grid-column:1/-1">
           <div class="row between"><div><div class="v">${s.form.avg14 ?? '—'}${s.form.avg14 !== null ? '<span class="small muted"> / 100</span>' : ''}</div>
           <div class="l">AI form quality · last 14 days</div></div>
@@ -187,6 +213,19 @@ export async function render(el, app) {
 
   el.querySelector('#toSetup')?.addEventListener('click', () => app.navigate('setup'));
   el.querySelector('#logout').onclick = () => app.logout();
+  el.querySelector('#makeCert').onclick = async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const r = await api('/certificates', { method: 'POST' });
+      const url = `/verify.html?id=${r.id}`;
+      btn.outerHTML = `<a class="btn primary block mt-16" href="${url}" target="_blank" rel="noopener">Open my certificate ↗</a>`;
+      toast('Certificate created');
+    } catch (err) {
+      btn.disabled = false;
+      toast(err.message, true);
+    }
+  };
 
   const readout = el.querySelector('#chartReadout');
   el.querySelectorAll('.bar-g').forEach((gEl) => {

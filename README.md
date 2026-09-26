@@ -23,6 +23,12 @@ One codebase runs as a **website** and as an **installable phone app** (a Progre
 | **Fit India Fitness Protocol alignment**: camera tests cover muscular endurance, core, cardio, flexibility (forward fold) and balance (single-leg stand) | AI Setup; Passport |
 | **Institution dashboard** for PE departments: anonymous trends, when-students-move heatmap, Fit India averages, suggestions (needs 5+ students) | `/institution.html` (linked from Community) |
 | **Seated / adaptive mode**: chair- and wheelchair-friendly missions and a seated arm-raise test | AI Setup → Movement mode |
+| **Adaptive difficulty**: each move's target learns from your verified results (two strong sessions → +10%, two tough ones → −10%; self-reported work never raises it) | Move; Passport → Your adaptive targets |
+| **Posture Guardian study mode**: on-device posture check (slouching, leaning in, tilt) calibrated to you, sitting-time break prompts | Dashboard → Posture Guardian (`#/study`) |
+| **Phone-sensor verification** of walks and stairs: accelerometer step counting, cadence, no wearable | Move → Track with phone sensors |
+| **Teacher-led class movement break**: projector screen with QR and join code, synced routine on every phone, XP for participants | Community → Class movement break; `/break.html` |
+| **Verifiable Fitness Certificate**: printable certificate with a QR code; anyone can verify it | Passport → Verified Fitness Certificate; `/verify.html` |
+| **Institution impact report**: before vs after, week-by-week table, Fit India changes; print to PDF or download CSV | Institution dashboard → Impact report |
 | **Move buddies (unlimited)**: one reusable code, a separate shared streak with each friend, and +10 XP when you move after a buddy on the same day | Community tab |
 
 The bottom navigation holds Dashboard, AI Setup, Move, Passport, and Community.

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>ATHLORA · Verified Fitness Certificate</title>
+  <meta name="theme-color" content="#07111f" />
+  <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/styles.css" />
+  <style>
+    .wrap { max-width: 820px; margin: 0 auto; padding: calc(18px + var(--safe-t)) 16px calc(32px + var(--safe-b)); }
+    .cert { position: relative; border-radius: 22px; padding: 28px; overflow: hidden;
+      background: linear-gradient(140deg, #0b2447 0%, #0d1b2e 45%, #0a1f3a 100%); border: 2px solid rgba(63,180,255,.35); }
+    .cert-head { display: flex; justify-content: space-between; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+    .verified { display: inline-flex; gap: 8px; align-items: center; padding: 8px 14px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 800; }
+    .cert h1 { font-size: clamp(26px, 5vw, 40px); font-weight: 800; margin-top: 18px; line-height: 1.1; }
+    .cert-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 18px; }
+    .cert-grid .stat { background: rgba(255,255,255,.04); }
+    .cert-foot { display: flex; gap: 18px; align-items: center; margin-top: 20px; flex-wrap: wrap; }
+    .cert-foot img { width: 120px; height: 120px; background: #fff; border-radius: 10px; padding: 6px; }
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+    @media print {
+      :root { --bg: #fff; --card: #fff; --card-2: #f3f5f7; --line: #d7dde3; --text: #07111f; --muted: #4c5a6a; --accent: #0b5cad; }
+      body { background: #fff !important; color: #07111f; }
+      .no-print { display: none !important; }
+      .cert { background: #fff !important; border-color: #0b5cad; break-inside: avoid; }
+      .verified { background: #0b5cad; color: #fff; }
+      .bar { background: #e6eaee; } .bar > div { background: #0b5cad !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap" id="root"><div class="spinner"></div></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="/js/verify.js"></script>
+</body>
+</html>
