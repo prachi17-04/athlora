@@ -42,4 +42,50 @@ function blobsKV(getStore) {
   };
 }
 
-module.exports = { fileKV, blobsKV };
+// Upstash Redis over its REST API (used on Vercel: Storage -> Upstash for Redis). No extra packages.
+function redisKV(url, token) {
+  async function cmd(...args) {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(args),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) throw new Error(`Database error: ${data.error || `HTTP ${res.status}`}`);
+    return data.result;
+  }
+  const globEscape = (s) => s.replace(/[*?[\]\\]/g, '\\$&');
+  return {
+    async get(key) {
+      const v = await cmd('GET', key);
+      return v === null || v === undefined ? null : JSON.parse(v);
+    },
+    async set(key, value) { await cmd('SET', key, JSON.stringify(value)); },
+    async delete(key) { await cmd('DEL', key); },
+    async list(prefix) {
+      const keys = [];
+      let cursor = '0';
+      do {
+        const [next, batch] = await cmd('SCAN', cursor, 'MATCH', `${globEscape(prefix)}*`, 'COUNT', '1000');
+        keys.push(...batch);
+        cursor = String(next);
+      } while (cursor !== '0');
+      return keys;
+    },
+  };
+}
+
+// Stand-in used when no database is connected: every call explains how to fix it
+function missingKV(message) {
+  const fail = async () => { throw new Error(message); };
+  return { get: fail, set: fail, delete: fail, list: fail };
+}
+
+// Upstash / Vercel KV env var names (the Vercel integration sets KV_REST_API_*)
+function redisFromEnv(env = process.env) {
+  const url = env.KV_REST_API_URL || env.UPSTASH_REDIS_REST_URL;
+  const token = env.KV_REST_API_TOKEN || env.UPSTASH_REDIS_REST_TOKEN;
+  return url && token ? redisKV(url, token) : null;
+}
+
+module.exports = { fileKV, blobsKV, redisKV, missingKV, redisFromEnv };

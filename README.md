@@ -87,6 +87,17 @@ To check a deployment, open `https://<your-site>.netlify.app/api/health`. It rep
 
 When running locally (`npm start`), the same API uses a JSON file in `data/` instead of Blobs.
 
+## 5. Deploy on Vercel (alternative)
+
+The repo also includes `vercel.json` and `api/index.js`, which runs the same API as a Vercel Function. Vercel has no built-in storage like Netlify Blobs, so connect a free **Upstash Redis** database:
+
+1. Import the GitHub repo into Vercel. Leave the settings as they are, because `vercel.json` fills them in.
+2. In the Vercel project, open **Storage → Create Database → Upstash (Redis)**, create the database, and **connect it to this project**. Vercel adds `KV_REST_API_URL` and `KV_REST_API_TOKEN` automatically.
+3. Optional: add `APP_SECRET` under **Settings → Environment Variables**.
+4. Open **Deployments**, click **⋯** on the latest deployment, then **Redeploy**.
+
+Check it at `https://<your-project>.vercel.app/api/health`. `"storage":"ok"` means it's ready.
+
 ---
 
 ## How it works
