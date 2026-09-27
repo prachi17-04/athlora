@@ -30,10 +30,41 @@ const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2
 export async function render(el, app) {
   const { store } = app;
   const stats = await app.refreshStats();
+  let plan = await api('/health-plan').catch(() => ({ active: false, conditions: [], avoidTests: [] }));
 
   function testsFor() {
     const seated = Boolean(store.user.profile.adaptive);
-    return TESTS.filter((t) => (seated ? t.seatedOnly : !t.seatedOnly) && !(t.highImpact && store.user.medical?.has));
+    const skip = new Set(plan.avoidTests || []);
+    return TESTS.filter((t) => (seated ? t.seatedOnly : !t.seatedOnly) && !(t.highImpact && store.user.medical?.has) && !skip.has(t.key));
+  }
+
+  // "You told us about X, so these are the exercises for you"
+  function healthPlanCard() {
+    if (!plan.active) return '';
+    const names = plan.conditions.map((c) => c.label.toLowerCase()).join(' and ');
+    return `
+      <section class="card health-card">
+        <div class="row between wrap"><h2>🩺 Your health-safe plan</h2>
+          <div class="row wrap" style="gap:6px">${plan.labels.map((l) => `<span class="tag lime">${esc(l)}</span>`).join('')}</div></div>
+        <p class="small muted mt-8">You told us about <b style="color:var(--text)">${esc(names)}</b>. ATHLORA builds every mission only from moves that suit you, and leaves out the ones below.</p>
+        ${plan.conditions.map((c) => `
+          <div class="mt-16">
+            <p class="upper">${esc(c.label)}</p>
+            <p class="small mt-8"><b>Good for you</b></p>
+            <div class="chips mt-8">${c.recommend.map((m) => `<span class="tag lime" title="${esc(m.cue)}">${m.camera ? '📷 ' : m.sensor ? '👟 ' : ''}${esc(m.name)}</span>`).join('')}</div>
+            <details class="mt-8">
+              <summary class="small"><b>Left out for you</b> <span class="muted">(${c.avoid.length})</span></summary>
+              <div class="mt-8">${c.avoid.map((a) => `<div class="reward-line small"><span>${esc(a.name)}</span><span class="muted" style="text-align:right;max-width:60%">${esc(a.reason)}</span></div>`).join('')}</div>
+            </details>
+            <ul class="small tips mt-8">${c.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul>
+          </div>`).join('')}
+        ${plan.capIntensity ? '<p class="small mt-8">💙 Your missions stay at gentle amounts and never auto-increase, however well you do.</p>' : ''}
+        ${plan.suggestSeated && !store.user.profile.adaptive ? `
+          <div class="note mt-16">While you recover, seated mode keeps every move gentle and chair-based.
+            <button class="btn sm mt-8" id="goSeated">Switch to seated mode</button></div>` : ''}
+        <button class="btn primary block mt-16" id="healthMission">Start a health-safe mission</button>
+        <p class="tiny muted mt-8">General safety guidance, not medical advice. Follow your doctor's or physiotherapist's advice. Stop straight away if you feel pain, dizziness, chest pain or unusual breathlessness.</p>
+      </section>`;
   }
 
   function draw() {
@@ -57,18 +88,22 @@ export async function render(el, app) {
           <h1 style="font-size:26px;font-weight:800;margin-top:4px">Teach ATHLORA about you</h1>
         </div>
 
+        ${healthPlanCard()}
+
         <section class="card hero">
           <div class="row between"><h2>AI Fitness Baseline</h2>${base ? `<span class="tag lime">${esc(latest.level)}</span>` : '<span class="tag">Not set</span>'}</div>
-          <p class="muted small mt-8">${p.adaptive
+          <p class="muted small mt-8">${!testsFor().length
+            ? 'Your health-safe plan pauses the fitness tests for now. Keep moving with gentle missions, and take the assessment once your doctor clears you.'
+            : p.adaptive
             ? 'Seated mode: a camera test of seated arm raises builds your fitness profile.'
-            : `Computer vision measures ${testsFor().map((t) => t.title.toLowerCase()).join(', ')} and squat-depth mobility, covering the Fit India Fitness Protocol components: muscular endurance, core, ${store.user.medical?.has ? '' : 'cardio, '}flexibility and balance.`}</p>
+            : `Computer vision measures ${testsFor().map((t) => t.title.toLowerCase()).join(', ')}${testsFor().some((t) => t.key === 'squats') ? ' and squat-depth mobility' : ''}, mapped to the Fit India Fitness Protocol components.${plan.active ? ' Tests that don\'t suit your health plan are left out.' : ''}`}</p>
           <p class="tiny muted mt-8">🔒 Pose detection runs on your device. Video is never recorded or uploaded.</p>
           ${base ? `
             <div class="grid-2 mt-16">
               <div class="stat"><div class="l">Baseline</div><div class="v" style="font-size:16px">${fmtDate(base.createdAt)}</div></div>
               <div class="stat"><div class="l">Latest test</div><div class="v" style="font-size:16px">${fmtDate(latest.createdAt)}</div></div>
             </div>` : ''}
-          <button class="btn primary block mt-16" id="startAssess">${ICONS.camera} ${base ? 'Re-assess to measure growth' : `Start ${p.adaptive ? '1' : '3'}-minute assessment`}</button>
+          ${testsFor().length ? `<button class="btn primary block mt-16" id="startAssess">${ICONS.camera} ${base ? 'Re-assess to measure growth' : `Start ${Math.max(1, Math.ceil(testsFor().length * 0.6))}-minute assessment`}</button>` : ''}
         </section>
 
         <div class="section-title" id="timetable">Class timetable</div>
@@ -114,10 +149,22 @@ export async function render(el, app) {
       if (name === 'spPlays') el.querySelector('#spBox').hidden = val !== 'yes';
     });
 
-    el.querySelector('#startAssess').onclick = () => {
+    el.querySelector('#startAssess')?.addEventListener('click', () => {
       assess = { i: 0, results: {}, verified: {} };
       draw();
-    };
+    });
+    el.querySelector('#healthMission')?.addEventListener('click', () => {
+      store.missionRequest = { minutes: 5, environment: p.environment || 'room' };
+      app.navigate('move');
+    });
+    el.querySelector('#goSeated')?.addEventListener('click', async () => {
+      try {
+        const r = await api('/me/context', { method: 'PUT', body: { adaptive: true } });
+        store.user = r.user;
+        toast('Seated mode on: every mission is now chair-based');
+        drawMain();
+      } catch (err) { toast(err.message, true); }
+    });
 
     drawTimetable();
     if (store.scrollTo === 'timetable') {
@@ -155,8 +202,10 @@ export async function render(el, app) {
           },
         });
         store.user = r.user;
-        toast('Saved');
+        plan = await api('/health-plan').catch(() => plan);
+        toast(plan.active ? 'Saved. Your health-safe plan is updated above' : 'Saved');
         drawMain();
+        if (plan.active) el.querySelector('.health-card')?.scrollIntoView({ behavior: 'smooth' });
       } catch (err) { toast(err.message, true); }
     };
   }

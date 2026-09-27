@@ -203,6 +203,12 @@ export async function render(el, app) {
 
       ${consistencyPanel(stats)}
 
+      ${u.medical?.has ? `
+        <section class="card health-card" id="healthPlanGo" style="cursor:pointer">
+          <div class="row between"><h3>🩺 Your health-safe plan</h3><span class="tag lime">View</span></div>
+          <p class="small muted mt-8">See which exercises suit your health and which ATHLORA leaves out for you. Every mission already follows it.</p>
+        </section>` : ''}
+
       ${opportunitiesCard(opps)}
 
       <section class="card" id="studyGo" style="cursor:pointer">
@@ -271,6 +277,7 @@ export async function render(el, app) {
   el.querySelector('#addTimetable')?.addEventListener('click', () => { store.scrollTo = 'timetable'; app.navigate('setup'); });
   el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('community'));
   el.querySelector('#studyGo').onclick = () => app.navigate('study');
+  el.querySelector('#healthPlanGo')?.addEventListener('click', () => app.navigate('setup'));
   el.querySelector('#streakGo')?.addEventListener('click', () => {
     store.missionRequest = { minutes: 3, environment: u.profile.environment || 'room' };
     app.navigate('move');

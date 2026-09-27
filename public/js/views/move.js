@@ -73,7 +73,8 @@ export async function render(el, app) {
           <div class="row wrap mt-8">
             <span class="tag">${esc(ENV_LABEL[m.environment] || m.environment)}</span>
             <span class="tag">${esc(m.level)}</span>
-            ${m.adaptive ? '<span class="tag lime">Seated mode</span>' : m.lowImpact ? '<span class="tag warn">Low-impact (health)</span>' : ''}
+            ${m.adaptive ? '<span class="tag lime">Seated mode</span>' : ''}
+            ${(m.healthLabels || []).map((l) => `<span class="tag lime">🩺 ${esc(l)}</span>`).join('')}
             ${m.comeback ? '<span class="tag warn">Easy restart</span>' : ''}
           </div>
           <div class="move-list">
@@ -90,6 +91,7 @@ export async function render(el, app) {
             <b class="accent">up to +${m.maxXp} Fitness XP</b>
           </div>
           ${m.items.some((it) => it.personalized) ? '<p class="tiny muted mt-8">🧠 Targets marked "for you" were learned from your own verified results.</p>' : ''}
+          ${m.healthLabels?.length ? '<p class="tiny muted mt-8">🩺 Built from your health-safe plan. Go at your own pace and stop if anything hurts.</p>' : ''}
           ${m.followUp ? `<p class="note mt-16">After class: ${esc(m.followUp.text)}.</p>` : ''}
         </section>
         <button class="btn primary block" id="start">START</button>

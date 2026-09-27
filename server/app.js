@@ -305,6 +305,10 @@ function createApp(kv) {
     res.json({ user: publicUser(u) });
   }));
 
+  // =============== HEALTH-SAFE PLAN ===============
+  // What a student with a reported condition should (and shouldn't) do. General guidance, not a diagnosis.
+  api.get('/health-plan', auth, (req, res) => res.json(engine.healthPlan(req.user)));
+
   // =============== STATS ===============
   api.get('/stats', auth, (req, res) => res.json(computeStats(req.user, tzOffset(req))));
 

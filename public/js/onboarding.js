@@ -168,7 +168,7 @@ export function startOnboarding(root, { user, onDone }) {
               ${MEDICAL_OPTIONS.map((c) => `<label class="check"><input type="checkbox" value="${esc(c)}" ${m.conditions.includes(c) ? 'checked' : ''}/> ${esc(c)}</label>`).join('')}
             </div>
             <textarea class="input" id="notes" rows="2" placeholder="Anything else we should know? (optional)" maxlength="300">${esc(m.notes)}</textarea>
-            <p class="note">ATHLORA doesn't diagnose anything. With a condition, your missions avoid high-impact moves. Please check with your doctor before starting new exercise.</p>` : ''}`,
+            <p class="note">ATHLORA doesn't diagnose anything. Based on what you select, it builds a health-safe plan: exercises that suit you, and the ones it leaves out. Please check with your doctor before starting new exercise.</p>` : ''}`,
         foot: `<button class="btn primary block" type="submit" ${m.has === null ? 'disabled' : ''}>Continue</button>`,
       });
       root.querySelectorAll('[data-has]').forEach((b) => b.onclick = () => {

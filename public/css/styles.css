@@ -296,6 +296,12 @@ h1, h2, h3, p { margin: 0; }
 .streak-banner.on .streak-num { background: linear-gradient(160deg, #ffb547, #ff6b2c); color: #1a0d00; }
 .streak-banner.on .streak-num span { color: rgba(26,13,0,.75); }
 
+/* ---------- health-safe plan ---------- */
+.health-card { border-color: rgba(63, 180, 255, .45); background: radial-gradient(120% 140% at 100% 0%, rgba(63,180,255,0.14), transparent 55%), var(--card); }
+.health-card details summary { cursor: pointer; list-style: revert; }
+.tips { margin: 0; padding-left: 18px; color: var(--muted); }
+.tips li { margin: 4px 0; }
+
 /* ---------- posture guardian ---------- */
 .posture-card { border-width: 2px; transition: border-color .3s; }
 .posture-icon { font-size: 48px; font-weight: 800; line-height: 1; margin-bottom: 8px; color: var(--muted); }

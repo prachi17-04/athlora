@@ -116,7 +116,8 @@ function personalAmount(user, move, li, { learn = true } = {}) {
  * @returns changes [{ moveId, name, unit, from, to, direction }]
  */
 function adaptTargets(user, mission, results) {
-  if (mission.comeback) return [];
+  // Comeback missions and capped-intensity health plans (heart, recent injury) never change targets
+  if (mission.comeback || healthPlan(user).capIntensity) return [];
   const state = (user.adaptiveTargets ||= {});
   const li = LEVELS.indexOf(mission.level) === -1 ? levelIndex(user) : LEVELS.indexOf(mission.level);
   const changes = [];
@@ -193,6 +194,128 @@ function missionTitle(minutes, { classroom, comeback, adaptive }) {
   return `${minutes} MIN POWER SESSION`;
 }
 
+// ---------- Health-safe exercise selection ----------
+// General, conservative exercise choices per reported condition. Not a diagnosis:
+// students are always told to follow their doctor's advice.
+const CONDITION_RULES = {
+  knee: {
+    match: /knee|joint/i, label: 'Knee / joint issues', short: 'Knee-friendly',
+    avoid: {
+      jumping_jacks: 'Landing from jumps jars the knees',
+      high_knees: 'Fast, repeated impact on the knees',
+      squats: 'Deep squats load the knee joint; chair sit-to-stand is gentler',
+      lunges: 'Deep lunges put high load on the front knee',
+      stairs: 'Stair climbing adds extra knee load',
+    },
+    recommend: ['chair_squats', 'seated_leg_ext', 'calf_raises', 'wall_pushups', 'band_rows', 'march', 'brisk_walk', 'mobility_flow', 'stretch'],
+    tips: ['Keep every move pain-free. Mild effort is fine, sharp or increasing knee pain means stop.', 'Keep knees in line with your toes and never lock them straight.'],
+    avoidTests: ['jumpingJacks', 'squats'],
+  },
+  back: {
+    match: /back/i, label: 'Back pain', short: 'Back-friendly',
+    avoid: {
+      plank: 'Long core holds can strain a sore back',
+      pushups: 'Floor push-ups make it easy to sag through the lower back',
+      chair_dips: 'Dips round the shoulders and back',
+      db_press: 'Overhead pressing arches the lower back',
+      lunges: 'Lunges need good trunk control under load',
+      jumping_jacks: 'Jumping jars the spine',
+      high_knees: 'Fast impact through the spine',
+    },
+    recommend: ['march', 'brisk_walk', 'wall_pushups', 'band_rows', 'calf_raises', 'chair_squats', 'posture_reset', 'mobility_flow', 'stretch'],
+    tips: ['Gentle, regular movement usually helps back pain more than resting all day.', "Move slowly, keep your spine long, and don't bend or twist into pain."],
+    avoidTests: ['plankSec', 'flexibility', 'jumpingJacks'],
+  },
+  asthma: {
+    match: /asthma/i, label: 'Asthma', short: 'Asthma-aware',
+    avoid: {
+      jumping_jacks: 'Short intense bursts can trigger breathlessness',
+      high_knees: 'Short intense bursts can trigger breathlessness',
+      stairs: 'Fast stair climbing raises breathing sharply',
+    },
+    recommend: ['brisk_walk', 'march', 'squats', 'wall_pushups', 'band_rows', 'calf_raises', 'mobility_flow', 'stretch'],
+    tips: ['Keep your inhaler nearby and always start with the warm-up.', 'Stay at a pace where you can still talk. Stop if you start wheezing.'],
+    avoidTests: ['jumpingJacks'],
+  },
+  heart: {
+    match: /heart/i, label: 'Heart condition', short: 'Heart-safe', capIntensity: true,
+    avoid: {
+      jumping_jacks: 'High-intensity bursts raise heart rate sharply',
+      high_knees: 'High-intensity bursts raise heart rate sharply',
+      stairs: 'Stair climbing raises heart rate quickly',
+      plank: 'Long holds tempt you to hold your breath, which spikes blood pressure',
+      pushups: 'Floor push-ups are high strain',
+      chair_dips: 'Dips are high strain for the upper body',
+      db_press: 'Overhead lifting raises blood pressure',
+    },
+    recommend: ['march', 'brisk_walk', 'wall_pushups', 'calf_raises', 'chair_squats', 'seated_leg_ext', 'mobility_flow', 'stretch'],
+    tips: ['Use the talk test: you should always be able to speak in full sentences.', "Breathe steadily and never hold your breath. Stop at once and get help if you feel chest pain, dizziness or unusual breathlessness."],
+    avoidTests: ['jumpingJacks', 'plankSec'],
+  },
+  injury: {
+    match: /injur|surgery/i, label: 'Recent injury or surgery', short: 'Recovery-gentle', capIntensity: true, suggestSeated: true,
+    avoid: {
+      squats: 'Loads the legs before you are cleared', lunges: 'Loads the legs before you are cleared',
+      chair_squats: 'Loads the legs before you are cleared', pushups: 'Loads the upper body before you are cleared',
+      wall_pushups: 'Loads the upper body before you are cleared', chair_dips: 'Loads the upper body before you are cleared',
+      plank: 'Strains the core during recovery', db_press: 'Lifting weight during recovery', band_rows: 'Resisted pulling during recovery',
+      jumping_jacks: 'Impact during recovery', high_knees: 'Impact during recovery', stairs: 'Impact during recovery',
+    },
+    recommend: ['posture_reset', 'shoulder_rolls', 'neck_release', 'seated_twist', 'seated_march', 'march', 'mobility_flow', 'stretch'],
+    tips: ['Only do what your doctor or physiotherapist has cleared, and keep away from the injured area.', 'Gentle movement keeps the rest of your body active while you recover.'],
+    avoidTests: ['squats', 'pushups', 'jumpingJacks', 'plankSec', 'balanceSec', 'flexibility'],
+  },
+  other: {
+    match: /./, label: 'Other condition', short: 'Low-impact',
+    avoid: {
+      jumping_jacks: 'High-impact moves are left out to be safe',
+      high_knees: 'High-impact moves are left out to be safe',
+    },
+    recommend: ['march', 'brisk_walk', 'wall_pushups', 'chair_squats', 'calf_raises', 'mobility_flow', 'stretch'],
+    tips: ['Start easy and build up slowly. Stop if anything hurts.'],
+    avoidTests: ['jumpingJacks'],
+  },
+};
+
+// Which rule sets apply to a student, from the conditions they selected (or "other" for notes only)
+function conditionKeys(user) {
+  if (!user.medical?.has) return [];
+  const keys = new Set();
+  for (const c of user.medical.conditions || []) {
+    const key = Object.keys(CONDITION_RULES).find((k) => k !== 'other' && CONDITION_RULES[k].match.test(c));
+    keys.add(key || 'other');
+  }
+  if (!keys.size) keys.add('other');
+  return [...keys];
+}
+
+/** The student's health-safe plan: recommended and avoided moves, tips, tests to skip. */
+function healthPlan(user) {
+  const keys = conditionKeys(user);
+  if (!keys.length) return { active: false, conditions: [] };
+  const avoidAll = new Set(keys.flatMap((k) => Object.keys(CONDITION_RULES[k].avoid)));
+  const moveInfo = (id) => { const m = MOVES.find((x) => x.id === id); return m && { id, name: m.name, cue: m.cue, camera: Boolean(m.cv), sensor: Boolean(m.sensor) }; };
+  return {
+    active: true,
+    capIntensity: keys.some((k) => CONDITION_RULES[k].capIntensity),
+    suggestSeated: keys.some((k) => CONDITION_RULES[k].suggestSeated),
+    labels: keys.map((k) => CONDITION_RULES[k].short),
+    avoidTests: [...new Set(keys.flatMap((k) => CONDITION_RULES[k].avoidTests))],
+    conditions: keys.map((k) => {
+      const r = CONDITION_RULES[k];
+      return {
+        key: k,
+        label: r.label,
+        short: r.short,
+        // A move is recommended only if no other reported condition rules it out
+        recommend: r.recommend.filter((id) => !avoidAll.has(id)).map(moveInfo).filter(Boolean),
+        avoid: Object.entries(r.avoid).map(([id, reason]) => ({ id, name: MOVES.find((m) => m.id === id)?.name || id, reason })),
+        tips: r.tips,
+      };
+    }),
+  };
+}
+
 /**
  * @param user     full user record (profile, onboarding)
  * @param ctx      { minutes, environment, equipment[] }
@@ -206,19 +329,23 @@ function generateMission(user, ctx, recent) {
   let minutes = Math.max(2, Math.min(30, Math.round(Number(ctx.minutes) || 5)));
   if (comeback) minutes = Math.min(minutes, 4);
 
-  const li = comeback ? 0 : levelIndex(user);
+  const health = healthPlan(user);
+  const avoidIds = new Set(health.conditions.flatMap((c) => c.avoid.map((a) => a.id)));
+  // Heart conditions and recent injuries stay at the gentlest amounts and never auto-increase
+  const li = comeback || health.capIntensity ? 0 : levelIndex(user);
   const goal = GOALS.includes(user.profile?.goal) ? user.profile.goal : 'general';
-  const lowImpact = Boolean(user.medical?.has);
+  const lowImpact = health.active;
   const adaptive = Boolean(user.profile?.adaptive);
 
-  // Adaptive (seated) mode: only chair-friendly moves, in any environment
-  const pool = MOVES.filter((m) => adaptive
+  // Adaptive (seated) mode: only chair-friendly moves, in any environment.
+  // Health-safe: moves ruled out by any reported condition are never picked.
+  const pool = MOVES.filter((m) => !avoidIds.has(m.id) && (adaptive
     ? m.seated && (!m.equip || equipment.includes(m.equip)) && (!classroom || m.quiet)
     : m.env.includes(environment) &&
       (!m.equip || equipment.includes(m.equip)) &&
       (m.minLevel || 0) <= li &&
       !(lowImpact && m.impact === 'high') &&
-      (!classroom || m.quiet)
+      (!classroom || m.quiet))
   ).map((m) => (adaptive && m.seatedFinisher ? { ...m, finisher: true } : m));
 
   const budget = minutes * 60;
@@ -227,7 +354,7 @@ function generateMission(user, ctx, recent) {
   const usedIds = new Set();
   const fits = (sec) => used + sec + TRANSITION <= budget + 15;
   // Personal (learned) amounts, except in comeback missions which stay easy
-  const amt = (m) => personalAmount(user, m, li, { learn: !comeback });
+  const amt = (m) => personalAmount(user, m, li, { learn: !comeback && !health.capIntensity });
   const add = (move, label) => {
     const amount = amt(move);
     const item = makeItem(move, amount, label, move.amount[li]);
@@ -297,6 +424,7 @@ function generateMission(user, ctx, recent) {
     comeback,
     lowImpact,
     adaptive,
+    healthLabels: health.active ? health.labels : [],
     items,
     maxXp: Math.round(items.reduce((s, it) => s + it.xp * 1.5, 0)) + 10 + (comeback ? 30 : 0),
     followUp,
@@ -522,5 +650,5 @@ module.exports = {
   LEVELS, ENVIRONMENTS, EQUIPMENT, GOALS, TESTS, FIT_INDIA_COMPONENTS,
   generateMission, scoreMission, levelFromAssessment, fitnessGrowth,
   fitIndiaReport, findOpportunities, toMin,
-  adaptTargets, personalTargets, classBreakRoutine,
+  adaptTargets, personalTargets, classBreakRoutine, healthPlan,
 };
