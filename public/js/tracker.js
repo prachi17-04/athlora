@@ -3,6 +3,7 @@
 // Video never leaves the device.
 
 import { primeAudio, sayCount, ting, createFinalTicker, soundOn, setSound } from './sound.js';
+import { hasDemo, stillSVG, mainFocus } from './demo.js';
 
 const VER = '0.10.14';
 const CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VER}`;
@@ -537,6 +538,7 @@ const BONES = [[11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [11, 23], [12, 
  *   title: string
  *   target?: number          - mission target; auto-finishes when reached
  *   window?: number          - test mode: counting window in seconds (e.g. 30)
+ *   demo?: string            - exercise id: shows its focus-areas diagram on the camera screen
  * @returns {Promise<{achieved:number, verified:boolean, minAngle?:number, form:{score,tip,reps}|null} | null>}
  *          null if cancelled
  */
@@ -560,6 +562,11 @@ export function openTracker(o) {
             <div class="form-chip" id="tform" hidden></div>
           </div>
         </div>
+        ${o.demo && hasDemo(o.demo) ? `
+          <div class="tracker-focus" aria-label="Main focus areas">
+            <div class="tracker-focus-circle">${stillSVG(o.demo)}</div>
+            <div class="tracker-focus-label">Feel it: ${mainFocus(o.demo)}</div>
+          </div>` : ''}
         <div class="big-center" id="tbig"></div>
         <div class="status" id="ts">Starting camera…</div>
       </div>

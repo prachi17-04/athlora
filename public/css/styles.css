@@ -276,6 +276,22 @@ h1, h2, h3, p { margin: 0; }
   font-size: 120px; font-weight: 800; color: var(--accent); text-shadow: 0 4px 30px rgba(0,0,0,.7);
   pointer-events: none;
 }
+/* Focus-areas diagram on the camera screen: bottom-left, above the status line, never mirrored */
+.tracker-focus {
+  position: absolute; left: 12px; bottom: 64px; z-index: 2; width: 112px;
+  display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none;
+}
+.tracker-focus-circle {
+  width: 104px; height: 104px; border-radius: 50%; padding: 2px; overflow: hidden;
+  background: rgba(7, 17, 31, .82); border: 2px solid rgba(63, 180, 255, .6);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .45);
+}
+/* zoom in on the figure: the picture has empty margins around it */
+.tracker-focus-circle .demo-still { transform: scale(1.25) translateY(-4%); }
+.tracker-focus-label {
+  font-size: 10.5px; font-weight: 700; line-height: 1.25; text-align: center; color: #fff;
+  background: rgba(7, 17, 31, .75); padding: 3px 6px; border-radius: 8px;
+}
 .tracker .controls {
   padding: 14px 16px calc(14px + var(--safe-b)); background: var(--bg);
   display: grid; grid-template-columns: auto 1fr auto; gap: 10px;

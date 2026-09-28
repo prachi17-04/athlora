@@ -319,7 +319,7 @@ export async function render(el, app) {
       </div>`;
 
     el.querySelector('#cam').onclick = async () => {
-      const r = await openTracker({ type: t.type, title: t.title, window: t.window, target: t.target });
+      const r = await openTracker({ type: t.type, title: t.title, window: t.window, target: t.target, demo: TEST_DEMO[t.key] });
       if (!r) return;
       if (!r.achieved) return toast(t.window ? 'No reps detected. Check you are fully in frame and try again.' : 'No hold detected. Check you are fully in frame and try again.', true);
       assess.results[t.key] = r.achieved;

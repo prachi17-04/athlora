@@ -289,6 +289,14 @@ export function stillSVG(id, className = 'demo-still') {
   return `<svg class="${className}" viewBox="0 0 100 100" role="img" aria-label="Exercise picture">${frameSVG(id)}</svg>`;
 }
 
+/** Names of the main (red) focus areas, e.g. "Front thighs · Glutes". */
+export function mainFocus(id) {
+  const d = DEMOS[id];
+  if (!d) return '';
+  const main = d.feel.filter(([, l]) => l === 'high');
+  return [...new Set((main.length ? main : d.feel).map(([n]) => FEEL_LABELS[n]))].join(' · ');
+}
+
 export function feelLegend(id) {
   const d = DEMOS[id];
   if (!d) return '';

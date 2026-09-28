@@ -179,7 +179,7 @@ export async function render(el, app) {
     };
 
     el.querySelector('#verify')?.addEventListener('click', async () => {
-      const r = await openTracker({ type: it.cv, title: it.name, target: it.target });
+      const r = await openTracker({ type: it.cv, title: it.name, target: it.target, demo: it.moveId });
       if (!r) return;
       if (!r.achieved) return toast(`No ${it.unit === 'sec' ? 'activity' : 'reps'} detected. Try again or tap "Done without camera".`, true);
       const result = { done: true, verified: r.verified, achieved: r.achieved, formScore: r.form?.score ?? null, formTip: r.form?.tip ?? null };
