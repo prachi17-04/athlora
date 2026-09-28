@@ -201,18 +201,18 @@ h1, h2, h3, p { margin: 0; }
 }
 .bottom-nav .inner {
   height: var(--nav-h); padding: 0 4px;
-  display: grid; grid-template-columns: repeat(6, 1fr);
+  display: grid; grid-template-columns: repeat(7, 1fr);
 }
 .bottom-nav a {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0;
   color: var(--muted); text-decoration: none; -webkit-tap-highlight-color: transparent;
 }
 .nav-pill {
-  width: 44px; height: 30px; border-radius: 12px; display: grid; place-items: center;
+  width: 40px; height: 30px; border-radius: 12px; display: grid; place-items: center;
   transition: background .25s ease, box-shadow .25s ease, transform .2s ease, color .2s ease;
 }
 .nav-pill svg { width: 22px; height: 22px; }
-.nav-label { font-size: 10px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; transition: color .2s ease; }
+.nav-label { font-size: 9.5px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; transition: color .2s ease; }
 .bottom-nav a:hover .nav-pill { color: var(--text); }
 .bottom-nav a:active .nav-pill { transform: scale(0.88); }
 .bottom-nav a.active .nav-pill {
@@ -396,6 +396,32 @@ h1, h2, h3, p { margin: 0; }
 .step { display: flex; gap: 12px; align-items: flex-start; }
 .step-n { flex: none; width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 800; display: grid; place-items: center; font-size: 13px; }
 .step p { margin-top: 2px; }
+
+/* Certificate row inside the Fitness Passport card */
+.passport-cert {
+  position: relative; z-index: 1; margin-top: 16px; padding-top: 14px; border-top: 1px dashed rgba(63, 180, 255, 0.35);
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.passport-cert > div:first-child { display: grid; gap: 2px; min-width: 0; }
+
+/* ---------- leaderboard podium ---------- */
+.podium { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; align-items: end; padding-top: 6px; }
+.podium-col { display: flex; flex-direction: column; align-items: center; text-align: center; gap: 3px; min-width: 0; }
+.podium-medal { font-size: 30px; line-height: 1; }
+.p1 .podium-medal { font-size: 40px; }
+.podium-name { font-weight: 700; font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.podium-xp { font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.podium-move { min-height: 16px; }
+.podium-block {
+  width: 100%; margin-top: 6px; border-radius: 14px 14px 6px 6px; display: grid; place-items: center;
+  background: linear-gradient(180deg, rgba(63,180,255,.28), rgba(63,180,255,.08)); border: 1px solid rgba(63,180,255,.3);
+}
+.podium-block span { font-size: 26px; font-weight: 800; color: var(--accent); }
+.p1 .podium-block { height: 110px; background: linear-gradient(180deg, rgba(111,125,255,.55), rgba(63,180,255,.18)); box-shadow: 0 8px 24px rgba(63,180,255,.25); }
+.p1 .podium-block span { color: #fff; font-size: 32px; }
+.p2 .podium-block { height: 80px; }
+.p3 .podium-block { height: 62px; }
+.podium-col.me .podium-name { color: var(--accent); }
 
 /* ---------- leaderboard ---------- */
 .lb-row { display: grid; grid-template-columns: 40px 1fr auto 52px; align-items: center; gap: 8px; padding: 10px 8px; border-radius: 12px; }

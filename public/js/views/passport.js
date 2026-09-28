@@ -62,11 +62,52 @@ function activityChart(days) {
     </svg>`;
 }
 
+// Today's Consistency: today's active minutes vs goal, streak and the last 7 days
+function consistencyPanel(stats) {
+  const t = stats.today;
+  const pct = Math.min(1, t.activeMin / t.goalMin);
+  const R = 44, C = 2 * Math.PI * R;
+  const hour = new Date().getHours();
+  let nudge;
+  if (t.missions === 0) nudge = hour >= 12 ? "You haven't moved yet today. Even 3 minutes counts." : 'Start your day with a quick Move Mission.';
+  else if (t.activeMin < t.goalMin) nudge = `${Math.ceil(t.goalMin - t.activeMin)} more active min to hit today's goal.`;
+  else nudge = 'Daily goal hit. Consistency beats intensity.';
+
+  const todayKey = stats.week[stats.week.length - 1].day;
+  return `
+    <section class="card">
+      <div class="row between"><h2>Today's Consistency</h2><span class="tag ${stats.streak ? 'lime' : ''}">${stats.streak} day streak</span></div>
+      <div class="ring-wrap mt-16">
+        <div class="ring">
+          <svg width="104" height="104" viewBox="0 0 104 104">
+            <circle cx="52" cy="52" r="${R}" fill="none" stroke="var(--card-2)" stroke-width="10"/>
+            <circle cx="52" cy="52" r="${R}" fill="none" stroke="var(--accent)" stroke-width="10" stroke-linecap="round"
+              stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct)}" style="transition:stroke-dashoffset .6s ease"/>
+          </svg>
+          <div class="lbl"><div><b>${Math.round(t.activeMin)}</b><span class="tiny muted">/ ${t.goalMin} min</span></div></div>
+        </div>
+        <div class="stack" style="gap:8px;flex:1">
+          <div class="row between"><span class="muted small">Missions today</span><b>${t.missions}</b></div>
+          <div class="row between"><span class="muted small">XP today</span><b>${t.xp}</b></div>
+          <div class="row between"><span class="muted small">Best streak</span><b>${stats.bestStreak} days</b></div>
+        </div>
+      </div>
+      <div class="week">
+        ${stats.week.map((d) => {
+          const label = new Date(d.day + 'T00:00:00').toLocaleDateString(undefined, { weekday: 'narrow' });
+          return `<div class="d"><div class="dot ${d.missions ? 'on' : ''} ${d.day === todayKey ? 'today' : ''}">${d.missions || ''}</div>${label}</div>`;
+        }).join('')}
+      </div>
+      <p class="small muted mt-16">${nudge}</p>
+    </section>`;
+}
+
 export async function render(el, app) {
   const { store } = app;
   const s = await app.refreshStats();
   const u = store.user;
   const anyActivity = s.last14.some((d) => d.missions > 0);
+  const cert = s.certificates[0] || null; // latest certificate only
 
   const badges = [
     ['1', 'First mission', s.totals.missions >= 1],
@@ -80,6 +121,7 @@ export async function render(el, app) {
     ['★', 'Great form (80+)', (s.form.avg14 ?? 0) >= 80],
     ['FI', 'All 5 Fit India areas', Boolean(s.fitIndia && s.fitIndia.every((c) => c.measured))],
   ];
+  const earned = badges.filter(([, , on]) => on);
 
   el.innerHTML = `
     <div class="stack">
@@ -97,7 +139,15 @@ export async function render(el, app) {
           <div><dt>Sports</dt><dd>${u.sports?.plays ? esc(u.sports.list.join(', ')) : 'None'}</dd></div>
           <div><dt>Member since</dt><dd>${fmtDate(u.createdAt)}</dd></div>
         </dl>
+        <div class="passport-cert">
+          <div><b>✓ Verified certificate</b><span class="tiny muted">${cert ? `Issued ${fmtDate(cert.issuedAt)} · scan the QR to verify` : 'Share your verified results with a QR code'}</span></div>
+          ${cert
+            ? `<div class="row" style="gap:8px"><a class="btn sm primary" href="/verify.html?id=${esc(cert.id)}" target="_blank" rel="noopener">View ↗</a><button class="btn sm ghost" id="makeCert" title="Re-issue with your latest stats">Update</button></div>`
+            : '<button class="btn sm primary" id="makeCert">Get certificate</button>'}
+        </div>
       </div>
+
+      ${consistencyPanel(s)}
 
       ${fitIndiaCard(s)}
 
@@ -111,15 +161,6 @@ export async function render(el, app) {
                 <b style="color:${t.pct > 0 ? 'var(--accent)' : t.pct < 0 ? 'var(--warn)' : 'var(--text)'}">${t.start} → ${t.current}${t.unit === 'sec' ? ' s' : t.unit === 'floors' ? ' floors' : ''}${t.pct ? ` (${t.pct > 0 ? '+' : ''}${t.pct}%)` : ''}</b></div>`).join('')}
           </div>`
         : '<p class="small muted mt-8">Complete camera- or sensor-verified missions, and ATHLORA will start tuning each move\'s target to you.</p>'}
-      </section>
-
-      <section class="card">
-        <div class="row between"><div class="upper">Verified Fitness Certificate</div><span class="tag lime">QR verified</span></div>
-        <p class="small muted mt-8">A shareable certificate of your verified activity, growth and Fit India results. Anyone (your school, college or a recruiter) can scan its QR code to confirm it's genuine.</p>
-        <button class="btn primary block mt-16" id="makeCert">Create my certificate</button>
-        ${s.certificates.length ? `<div class="mt-8">${s.certificates.map((c) => `
-          <div class="reward-line"><span class="small">Issued ${fmtDate(c.issuedAt)}</span>
-            <a class="link" href="/verify.html?id=${esc(c.id)}" target="_blank" rel="noopener">Open ↗</a></div>`).join('')}</div>` : ''}
       </section>
 
       <section class="card">
@@ -147,10 +188,10 @@ export async function render(el, app) {
         </div>
       </div>
 
-      <div class="section-title">Badges</div>
-      <div class="badges">
-        ${badges.map(([ico, label, on]) => `<div class="badge ${on ? '' : 'locked'}"><div class="ico">${ico}</div>${esc(label)}</div>`).join('')}
-      </div>
+      <div class="section-title">Badges${earned.length ? ` · ${earned.length}` : ''}</div>
+      ${earned.length
+        ? `<div class="badges">${earned.map(([ico, label]) => `<div class="badge"><div class="ico">${ico}</div>${esc(label)}</div>`).join('')}</div>`
+        : '<div class="empty">No badges yet. Complete your first Move Mission to earn one!</div>'}
 
       <div class="section-title">Account</div>
       <section class="card">
@@ -161,19 +202,18 @@ export async function render(el, app) {
     </div>`;
 
   el.querySelector('#logout').onclick = () => app.logout();
-  el.querySelector('#makeCert').onclick = async (e) => {
+  el.querySelector('#makeCert')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
     btn.disabled = true;
     try {
-      const r = await api('/certificates', { method: 'POST' });
-      const url = `/verify.html?id=${r.id}`;
-      btn.outerHTML = `<a class="btn primary block mt-16" href="${url}" target="_blank" rel="noopener">Open my certificate ↗</a>`;
-      toast('Certificate created');
+      await api('/certificates', { method: 'POST' });
+      toast(cert ? 'Certificate updated with your latest stats' : 'Certificate created');
+      await render(el, app);
     } catch (err) {
       btn.disabled = false;
       toast(err.message, true);
     }
-  };
+  });
 
   const readout = el.querySelector('#chartReadout');
   el.querySelectorAll('.bar-g').forEach((gEl) => {

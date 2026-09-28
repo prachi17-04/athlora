@@ -10,6 +10,7 @@ import * as study from './views/study.js';
 import * as classBreak from './views/break.js';
 import * as classBreakHome from './views/classbreak.js';
 import * as xpHistory from './views/xp.js';
+import * as leaderboard from './views/leaderboard.js';
 
 const root = document.getElementById('app');
 
@@ -20,12 +21,13 @@ export const store = {
   missionRequest: null, // { minutes, environment } handed from dashboard to Move
 };
 
-const ROUTES = { dashboard, move, setup, passport, community, campus: community, study, break: classBreak, class: classBreakHome, xp: xpHistory };
+const ROUTES = { dashboard, move, setup, passport, community, campus: community, study, break: classBreak, class: classBreakHome, xp: xpHistory, leaders: leaderboard };
 const NAV = [
   ['dashboard', 'Dashboard', ICONS.home],
   ['setup', 'AI Setup', ICONS.ai],
   ['move', 'Move', ICONS.move],
   ['passport', 'Passport', ICONS.passport],
+  ['leaders', 'Leaders', ICONS.trophy],
   ['community', 'Community', ICONS.community],
   ['class', 'Class', ICONS.classbreak],
 ];

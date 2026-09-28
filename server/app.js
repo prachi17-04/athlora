@@ -358,13 +358,15 @@ function createApp(kv) {
     // move > 0 = climbed that many places since the start of today, < 0 = dropped, 'new' = first XP today
     const view = (r, i) => ({ rank: i + 1, name: r.name, xp: r.xp, me: r.id === u.id, move: prevRank.has(r.id) ? prevRank.get(r.id) - (i + 1) : 'new' });
     const myIdx = current.findIndex((r) => r.id === u.id);
+    // ?limit=N shows the top N (default 3, max 50); "me" is added separately when I'm below that
+    const limit = Math.max(3, Math.min(50, Number(req.query.limit) || 3));
     res.json({
       scope,
       label: scope === 'community' ? u.campus : 'All ATHLORA students',
       canSwitch: inCommunity,
       total: current.length,
-      top: current.slice(0, 3).map(view),
-      me: myIdx >= 3 ? view(current[myIdx], myIdx) : null,
+      top: current.slice(0, limit).map((r, i) => view(r, i)),
+      me: myIdx >= limit ? view(current[myIdx], myIdx) : null,
       unranked: myIdx === -1,
     });
   }));
