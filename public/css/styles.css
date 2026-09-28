@@ -201,18 +201,18 @@ h1, h2, h3, p { margin: 0; }
 }
 .bottom-nav .inner {
   height: var(--nav-h); padding: 0 4px;
-  display: grid; grid-template-columns: repeat(7, 1fr);
+  display: grid; grid-template-columns: repeat(6, 1fr);
 }
 .bottom-nav a {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-width: 0;
   color: var(--muted); text-decoration: none; -webkit-tap-highlight-color: transparent;
 }
 .nav-pill {
-  width: 40px; height: 30px; border-radius: 12px; display: grid; place-items: center;
+  width: 44px; height: 30px; border-radius: 12px; display: grid; place-items: center;
   transition: background .25s ease, box-shadow .25s ease, transform .2s ease, color .2s ease;
 }
 .nav-pill svg { width: 22px; height: 22px; }
-.nav-label { font-size: 9.5px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; transition: color .2s ease; }
+.nav-label { font-size: 10px; font-weight: 600; letter-spacing: .01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; transition: color .2s ease; }
 .bottom-nav a:hover .nav-pill { color: var(--text); }
 .bottom-nav a:active .nav-pill { transform: scale(0.88); }
 .bottom-nav a.active .nav-pill {

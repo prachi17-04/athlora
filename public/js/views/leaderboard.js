@@ -65,6 +65,7 @@ export async function render(el) {
     scope = lb.scope;
     el.innerHTML = `
       <div class="stack">
+        <a class="link" href="#/community" style="color:var(--muted);justify-self:start">← Community</a>
         <div>
           <div class="upper">Leaderboard</div>
           <h1 style="font-size:26px;font-weight:800;margin-top:4px">🏆 Top movers</h1>

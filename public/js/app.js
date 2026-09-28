@@ -27,7 +27,6 @@ const NAV = [
   ['setup', 'AI Setup', ICONS.ai],
   ['move', 'Move', ICONS.move],
   ['passport', 'Passport', ICONS.passport],
-  ['leaders', 'Leaders', ICONS.trophy],
   ['community', 'Community', ICONS.community],
   ['class', 'Class', ICONS.classbreak],
 ];
@@ -106,7 +105,7 @@ async function route() {
     history.replaceState(null, '', '#/move');
   }
   const view = ROUTES[name] || dashboard;
-  const navKey = { campus: 'community', break: 'class', study: 'dashboard' }[name] || (ROUTES[name] ? name : 'dashboard');
+  const navKey = { campus: 'community', leaders: 'community', break: 'class', study: 'dashboard' }[name] || (ROUTES[name] ? name : 'dashboard');
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;
