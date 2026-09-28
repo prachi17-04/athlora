@@ -1,51 +1,139 @@
 import { api } from '../api.js';
 import { esc, toast } from '../ui.js';
 
-// Move buddies: add as many friends as you like. Each friendship has its own shared streak.
-// Social motivation without any scoreboard or comparison.
-function buddySection(b) {
+// Community tab: one shared weekly goal, a compact leaderboard, and move buddies.
+const MEDALS = ['🥇', '🥈', '🥉'];
+const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const initials = (name) => String(name || '?').trim().split(/\s+/).map((p) => p[0]).join('').slice(0, 2).toUpperCase();
+
+function moveBadge(move) {
+  if (move === 'new') return '<span class="lb-move new">NEW</span>';
+  if (move > 0) return `<span class="lb-move up">▲ ${move}</span>`;
+  if (move < 0) return `<span class="lb-move down">▼ ${-move}</span>`;
+  return '<span class="lb-move same">–</span>';
+}
+
+// Weekly goal + stats + your contribution, all in one card
+function goalCard(c) {
+  const pct = Math.min(100, Math.round((c.totalMin / c.goalMin) * 100));
+  const share = c.totalMin > 0 ? Math.round((c.myMin / c.totalMin) * 100) : 0;
+  const weekStart = new Date(c.weekStart + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+  const R = 38, C = 2 * Math.PI * R;
+  return `
+    <section class="card community-hero">
+      <div class="row between" style="align-items:flex-start">
+        <div style="min-width:0">
+          <div class="upper">Your community</div>
+          <h1 class="community-name">${esc(c.campus)}</h1>
+        </div>
+        <button class="btn sm ghost" id="change">Change</button>
+      </div>
+      <div class="goal-row mt-16">
+        <div class="goal-ring">
+          <svg width="92" height="92" viewBox="0 0 92 92">
+            <circle cx="46" cy="46" r="${R}" fill="none" stroke="var(--card-2)" stroke-width="9"/>
+            <circle cx="46" cy="46" r="${R}" fill="none" stroke="url(#goalGrad)" stroke-width="9" stroke-linecap="round"
+              stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}" transform="rotate(-90 46 46)"/>
+            <defs><linearGradient id="goalGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#3fb4ff"/><stop offset="1" stop-color="#6f7dff"/></linearGradient></defs>
+          </svg>
+          <b>${pct}%</b>
+        </div>
+        <div style="min-width:0">
+          <div class="goal-num"><b>${c.totalMin.toLocaleString()}</b><span> / ${c.goalMin.toLocaleString()} min</span></div>
+          <p class="small muted">Weekly goal · since ${weekStart}</p>
+          <p class="tiny muted mt-8">Everyone's active minutes fill one shared bar (60 min per member).</p>
+        </div>
+      </div>
+      <div class="mini-stats mt-16">
+        <div><b>${c.members}</b><span>members</span></div>
+        <div><b>${c.activeMembers}</b><span>moved this week</span></div>
+        <div><b>${c.missions}</b><span>missions</span></div>
+      </div>
+      <div class="contrib mt-16">
+        <div style="min-width:0"><span class="tiny muted">Your part this week</span>
+          <div><b class="accent">${c.myMin} min</b>${c.myMin > 0 ? ` <span class="small muted">· ${share}% of the total</span>` : ' <span class="small muted">· not yet</span>'}</div></div>
+        <button class="btn sm primary" id="move">Add minutes</button>
+      </div>
+    </section>`;
+}
+
+// Top 3 + your own rank; the full list lives on the Leaders tab
+function leaderboardCard(lb) {
+  if (!lb) return '';
+  const me = lb.top.find((r) => r.me) || lb.me;
+  const order = [lb.top[1], lb.top[0], lb.top[2]].map((r, i) => ({ r, place: [2, 1, 3][i] })).filter((x) => x.r);
+  return `
+    <section class="card">
+      <div class="row between"><h3>🏆 Leaderboard</h3><a class="link" href="#/leaders">See all ›</a></div>
+      <p class="tiny muted mt-8">${esc(lb.label)} · by Fitness XP</p>
+      ${lb.top.length ? `
+        <div class="podium mini mt-16">
+          ${order.map(({ r, place }) => `
+            <div class="podium-col p${place} ${r.me ? 'me' : ''}">
+              <div class="podium-medal">${MEDALS[place - 1]}</div>
+              <div class="podium-name">${esc(r.name)}</div>
+              <div class="podium-xp">${r.xp.toLocaleString()} XP</div>
+              <div class="podium-block"><span>${place}</span></div>
+            </div>`).join('')}
+        </div>
+        ${me && me.rank > 3 ? `
+          <div class="lb-row me mt-8">
+            <span class="lb-rank">${ordinal(me.rank)}</span>
+            <span class="lb-name">${esc(me.name)} <span class="tag lime">You</span></span>
+            <span class="lb-xp">${me.xp.toLocaleString()} XP</span>${moveBadge(me.move)}
+          </div>` : ''}
+        ${!me ? '<p class="tiny muted mt-8 center">Earn your first XP to get on the board.</p>' : ''}`
+      : '<p class="small muted mt-8">No XP earned here yet. Complete a mission and take 1st place!</p>'}
+    </section>`;
+}
+
+// Move buddies: avatars, shared streaks, and an "Add buddies" drawer
+function buddyCard(b) {
   if (!b) return '';
   const moved = b.buddies.filter((x) => x.movedToday).length;
   return `
-    <div class="section-title">Move buddies${b.buddies.length ? ` · ${b.buddies.length}` : ''}</div>
     <section class="card">
+      <div class="row between"><h3>🤝 Move buddies${b.buddies.length ? ` · ${b.buddies.length}` : ''}</h3>
+        ${b.buddies.length ? `<span class="tag ${moved ? 'lime' : ''}">${moved}/${b.buddies.length} moved today</span>` : ''}</div>
       ${b.buddies.length ? `
-        <p class="small muted">${moved} of ${b.buddies.length} ${b.buddies.length === 1 ? 'buddy has' : 'buddies have'} moved today · ${b.meMovedToday ? 'you did ✓' : '<span class="accent">your turn!</span>'}</p>
-        <div class="mt-8">
+        <div class="buddy-list mt-8">
           ${b.buddies.map((x) => `
-            <div class="opp" data-buddy="${esc(x.id)}">
-              <div class="what">
-                <b>${esc(x.name)}</b>
-                <span class="tiny muted">${x.movedToday ? '✓ moved today' : 'not moved yet today'}</span>
-              </div>
-              <span class="tag ${x.sharedStreak ? 'lime' : ''}">🔥 ${x.sharedStreak} day${x.sharedStreak === 1 ? '' : 's'}</span>
-              <button class="link" style="color:var(--muted);padding:4px 6px" data-remove="${esc(x.id)}" aria-label="Remove ${esc(x.name)}">✕</button>
+            <div class="buddy-row">
+              <span class="avatar ${x.movedToday ? 'on' : ''}" title="${x.movedToday ? 'Moved today' : 'Not moved yet today'}">${esc(initials(x.name))}</span>
+              <div class="buddy-main"><b>${esc(x.name)}</b><span class="tiny muted">${x.movedToday ? '✓ moved today' : 'not yet today'}</span></div>
+              <span class="tag ${x.sharedStreak ? 'lime' : ''}">🔥 ${x.sharedStreak}</span>
+              <button class="link buddy-x" data-remove="${esc(x.id)}" aria-label="Remove ${esc(x.name)}">✕</button>
             </div>
-            <div class="row mt-8" data-confirm="${esc(x.id)}" hidden>
+            <div class="row buddy-confirm" data-confirm="${esc(x.id)}" hidden>
               <span class="small">Remove ${esc(x.name)}?</span>
               <button class="btn sm danger" data-yes="${esc(x.id)}">Remove</button>
               <button class="btn sm ghost" data-no="${esc(x.id)}">Keep</button>
             </div>`).join('')}
         </div>
-        <p class="tiny muted mt-8">Each shared streak grows only on days you <b>both</b> move. The first time you move each day after any buddy already has, you get +10 XP.</p>`
-      : `<h2>Move with friends</h2>
-         <p class="muted small mt-8">Add as many buddies as you like. With each one you share a streak that grows only on days you both move. There's no scoreboard and no comparison, just friends counting on each other.</p>`}
-      <p class="upper mt-16">Your buddy code</p>
-      <div class="code-box mt-8">${esc(b.code)}</div>
-      <div class="grid-2 mt-8">
-        <button class="btn sm ghost" id="shareCode">Share code</button>
-        <button class="btn sm ghost" id="copyCode">Copy code</button>
-      </div>
-      <p class="tiny muted mt-8">Any number of friends can use this code.</p>
-      <p class="upper mt-16">Add a buddy</p>
-      <div class="row mt-8">
-        <input class="input sm" id="joinCode" placeholder="Friend's code" maxlength="6" style="text-transform:uppercase" />
-        <button class="btn sm" id="joinBuddy">Add</button>
-      </div>
+        <p class="tiny muted mt-8">${b.meMovedToday ? 'You moved today ✓' : '<span class="accent">Your turn: move after a buddy for +10 XP.</span>'} A shared streak 🔥 grows on days you both move.</p>`
+      : '<p class="small muted mt-8">Pair up with friends. With each one you share a streak that grows on days you both move.</p>'}
+      <details class="add-buddies mt-16" ${b.buddies.length ? '' : 'open'}>
+        <summary><b>+ Add buddies</b></summary>
+        <div class="mt-8">
+          <div class="code-row">
+            <div><span class="tiny muted">Your code</span><div class="code-inline">${esc(b.code)}</div></div>
+            <div class="row" style="gap:6px"><button class="btn sm ghost" id="shareCode">Share</button><button class="btn sm ghost" id="copyCode">Copy</button></div>
+          </div>
+          <div class="row mt-8">
+            <input class="input sm" id="joinCode" placeholder="Friend's code" maxlength="6" style="text-transform:uppercase" />
+            <button class="btn sm primary" id="joinBuddy">Add</button>
+          </div>
+          <p class="tiny muted mt-8">Any number of friends can use your code.</p>
+        </div>
+      </details>
     </section>`;
 }
 
-// Community challenge: everyone moves one shared bar. No rankings, no leaderboard.
+const institutionLink = `
+  <a class="inst-link" href="/institution.html">
+    <span>🏫</span><div><b>For PE departments</b><span class="tiny muted">Anonymous community insights · no names</span></div><span class="muted">›</span>
+  </a>`;
+
 export async function render(el, app) {
   const { store } = app;
 
@@ -88,86 +176,46 @@ export async function render(el, app) {
     }));
   }
 
-  const institutionLink = `
-    <a class="card" href="/institution.html" style="display:block;text-decoration:none;color:inherit">
-      <div class="row between"><div><div class="upper">For PE departments</div><b>Institution dashboard →</b></div></div>
-      <p class="tiny muted mt-8">Anonymous community-wide insights: activity trends, when students move, Fit India component averages. No names, ever.</p>
-    </a>`;
-
   async function draw() {
-    const [c, buddy] = await Promise.all([api('/campus'), api('/buddy').catch(() => null)]);
-    if (!c.campus) {
-      drawJoin();
-      el.querySelector('.stack').insertAdjacentHTML('beforeend', buddySection(buddy) + institutionLink);
-      bindBuddy(buddy);
-      return;
-    }
-
-    const pct = Math.min(100, Math.round((c.totalMin / c.goalMin) * 100));
-    const myShare = c.totalMin > 0 ? Math.round((c.myMin / c.totalMin) * 100) : 0;
-    const weekStart = new Date(c.weekStart + 'T00:00:00').toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
-
+    const [c, buddy, lb] = await Promise.all([
+      api('/campus'),
+      api('/buddy').catch(() => null),
+      api('/leaderboard').catch(() => null),
+    ]);
     el.innerHTML = `
       <div class="stack">
-        <div>
-          <div class="upper">Community Challenge</div>
-          <h1 style="font-size:26px;font-weight:800;margin-top:4px">${esc(c.campus)}</h1>
-          <p class="muted small mt-8">One shared goal. No rankings — every member who moves pushes the bar together.</p>
-        </div>
-
-        <section class="card hero">
-          <div class="row between"><span class="upper">This week · from ${weekStart}</span><span class="tag lime">${pct}%</span></div>
-          <div class="row mt-8" style="align-items:baseline;gap:6px">
-            <span style="font-size:40px;font-weight:800">${c.totalMin}</span>
-            <span class="muted">/ ${c.goalMin} active min</span>
-          </div>
-          <div class="bar mt-8" style="height:12px"><div style="width:${pct}%"></div></div>
-          <p class="small muted mt-8">Goal = 60 active minutes per member each week.</p>
-        </section>
-
-        <div class="grid-3">
-          <div class="stat"><div class="v">${c.members}</div><div class="l">members</div></div>
-          <div class="stat"><div class="v">${c.activeMembers}</div><div class="l">moved this week</div></div>
-          <div class="stat"><div class="v">${c.missions}</div><div class="l">missions</div></div>
-        </div>
-
-        <section class="card">
-          <h3>Your contribution</h3>
-          <div class="row mt-8" style="align-items:baseline;gap:6px">
-            <span style="font-size:30px;font-weight:800" class="accent">${c.myMin}</span><span class="muted">active min this week</span>
-          </div>
-          <p class="small muted mt-8">${c.myMin > 0 ? `That's ${myShare}% of your community's movement this week.` : 'Complete a Move Mission to add your minutes.'}</p>
-          <button class="btn primary block mt-16" id="move">Add minutes now</button>
-        </section>
-
-        <p class="small muted center">Invite others: they join by entering the same community name.</p>
-        <button class="link" id="change" style="color:var(--muted)">Change community</button>
-        ${buddySection(buddy)}
+        ${c.campus ? goalCard(c) : joinCard()}
+        ${leaderboardCard(lb)}
+        ${buddyCard(buddy)}
         ${institutionLink}
       </div>`;
-    el.querySelector('#move').onclick = () => app.navigate('move');
-    el.querySelector('#change').onclick = () => drawJoin(c.campus);
+    el.querySelector('#move')?.addEventListener('click', () => app.navigate('move'));
+    el.querySelector('#change')?.addEventListener('click', () => {
+      el.querySelector('.community-hero').outerHTML = joinCard(c.campus);
+      bindJoin();
+    });
+    bindJoin();
     bindBuddy(buddy);
   }
 
-  function drawJoin(existing = '') {
-    el.innerHTML = `
-      <div class="stack">
-        <div>
-          <div class="upper">Community Challenge</div>
-          <h1 style="font-size:26px;font-weight:800;margin-top:4px">Move together with your community</h1>
-          <p class="muted small mt-8">Join your college, class, hostel or club's weekly collective goal. Everyone's active minutes fill one shared bar, with no rankings.</p>
+  function joinCard(existing = '') {
+    return `
+      <section class="card community-hero" id="joinBox">
+        <div class="upper">Community</div>
+        <h1 class="community-name">${existing ? 'Change community' : 'Move together'}</h1>
+        <p class="muted small mt-8">Join your college, class, hostel or club. Everyone's active minutes fill one shared weekly goal.</p>
+        <div class="row mt-16">
+          <input class="input" id="campus" maxlength="80" placeholder="e.g. IIT Delhi, or Hostel 4 Block B" value="${esc(existing)}" />
+          <button class="btn primary" id="join">${existing ? 'Save' : 'Join'}</button>
         </div>
-        <section class="card">
-          <div class="field">
-            <label for="campus">Community name</label>
-            <input class="input" id="campus" maxlength="80" placeholder="e.g. IIT Delhi, or Hostel 4 Block B" value="${esc(existing)}" />
-          </div>
-          <p class="tiny muted mt-8">Use the exact same name as your friends so you land on the same team.</p>
-          <button class="btn primary block mt-16" id="join">Join community</button>
-        </section>
-      </div>`;
-    el.querySelector('#join').onclick = async () => {
+        <p class="tiny muted mt-8">Use exactly the same name as your friends to land on the same team.</p>
+      </section>`;
+  }
+
+  function bindJoin() {
+    const btn = el.querySelector('#join');
+    if (!btn) return;
+    const go = async () => {
       const name = el.querySelector('#campus').value.trim();
       if (name.length < 2) return toast('Enter your community name', true);
       try {
@@ -177,6 +225,8 @@ export async function render(el, app) {
         await draw();
       } catch (err) { toast(err.message, true); }
     };
+    btn.addEventListener('click', go);
+    el.querySelector('#campus').addEventListener('keydown', (e) => { if (e.key === 'Enter') go(); });
   }
 
   await draw();
