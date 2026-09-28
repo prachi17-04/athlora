@@ -221,7 +221,6 @@ export async function render(el, app) {
   stats.userName = u.name.split(' ')[0];
   const hour = new Date().getHours();
   const greet = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
-  const g = stats.growth;
 
   el.innerHTML = `
     <div class="stack">
@@ -264,23 +263,6 @@ export async function render(el, app) {
         <div class="mt-8">${chips('env', ENV_OPTIONS, u.profile.environment || 'room')}</div>
         <button class="btn primary block mt-16" id="findMission">Find my Move Mission</button>
       </section>
-
-      <div class="grid-2">
-        <div class="card">
-          <div class="upper">Fitness XP</div>
-          <div class="v" style="font-size:30px;font-weight:800;margin-top:6px">${stats.xp}</div>
-          <div class="bar mt-8"><div style="width:${Math.round(stats.levelProgress * 100)}%"></div></div>
-          <p class="tiny muted mt-8">Level ${stats.level} · ${stats.nextLevelXp - stats.xp} XP to level ${stats.level + 1}</p>
-        </div>
-        <div class="card" id="fgiTile" style="cursor:pointer">
-          <div class="upper">Growth Index</div>
-          ${g
-            ? `<div class="fgi-num ${g.fgi >= 0 ? 'pos' : 'neg'}" style="font-size:30px;margin-top:6px">${g.fgi >= 0 ? '+' : ''}${g.fgi}%</div>
-               <p class="tiny muted mt-8">vs your own baseline</p>`
-            : `<div style="font-size:15px;font-weight:600;margin-top:8px">${stats.baseline ? 'Re-test to see growth' : 'Not set yet'}</div>
-               <p class="tiny muted mt-8">${stats.baseline ? 'Take another AI assessment' : 'Set your AI baseline'}</p>`}
-        </div>
-      </div>
 
 
     </div>`;
@@ -327,5 +309,4 @@ export async function render(el, app) {
     btn.classList.toggle('ghost', !remindersEnabled());
   });
   if (opps) scheduleReminders(opps);
-  el.querySelector('#fgiTile').onclick = () => app.navigate(stats.baseline ? 'passport' : 'setup');
 }

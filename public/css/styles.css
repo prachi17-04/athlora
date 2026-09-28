@@ -332,9 +332,25 @@ h1, h2, h3, p { margin: 0; }
 .streak-banner.on .streak-num { background: linear-gradient(160deg, #ffb547, #ff6b2c); color: #1a0d00; }
 .streak-banner.on .streak-num span { color: rgba(26,13,0,.75); }
 
+/* ---------- level pill (top-right): fills toward the next level ---------- */
+.level-pill {
+  position: relative; overflow: hidden; display: inline-flex; align-items: center;
+  min-width: 150px; height: 30px; padding: 0 12px; border-radius: 999px;
+  background: var(--card-2); border: 1px solid rgba(63, 180, 255, 0.35);
+  color: var(--text); text-decoration: none; font-size: 12px; white-space: nowrap;
+}
+.level-fill {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: linear-gradient(90deg, rgba(63, 180, 255, 0.55), rgba(111, 125, 255, 0.75));
+  transition: width .8s ease;
+}
+.level-text { position: relative; }
+.level-text b { color: #fff; }
+.level-pill:hover { filter: brightness(1.12); }
+/* Nearly there: a gentle glow */
+.level-pill.almost { box-shadow: 0 0 0 1px rgba(111, 125, 255, 0.5), 0 0 14px rgba(63, 180, 255, 0.45); }
+
 /* ---------- XP history ---------- */
-.xp-tag { text-decoration: none; cursor: pointer; }
-.xp-tag:hover { filter: brightness(1.15); }
 .xp-kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
 .xp-day { font-size: 13px; font-weight: 700; padding: 0 4px; margin-top: 4px; }
 .xp-entry { border-bottom: 1px solid var(--line); }

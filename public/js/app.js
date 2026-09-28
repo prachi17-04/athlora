@@ -59,7 +59,10 @@ function mountShell() {
     <div class="shell">
       <header class="topbar">
         <div class="brand"><img src="/icons/icon.svg" alt="" />ATHLORA</div>
-        <a class="tag lime xp-tag" id="lvlTag" href="#/xp" title="See how you earned your XP"></a>
+        <a class="level-pill" id="lvlTag" href="#/xp" title="See how you earned your XP">
+          <span class="level-fill" id="lvlFill"></span>
+          <span class="level-text" id="lvlText"></span>
+        </a>
       </header>
       <main id="view"></main>
     </div>
@@ -73,9 +76,17 @@ function mountShell() {
     </nav>`;
 }
 
+// Top-right level pill: fills up as you get closer to the next level
 export function updateLevelTag() {
   const el = document.getElementById('lvlTag');
-  if (el && store.stats) el.textContent = `LVL ${store.stats.level} · ${store.stats.xp} XP ›`;
+  const s = store.stats;
+  if (!el || !s) return;
+  const pct = Math.max(0, Math.min(1, s.levelProgress)) * 100;
+  const left = Math.max(0, s.nextLevelXp - s.xp);
+  el.querySelector('#lvlFill').style.width = `${pct}%`;
+  el.querySelector('#lvlText').innerHTML = `<b>LVL ${s.level}</b> · ${left.toLocaleString()} XP to go ›`;
+  el.classList.toggle('almost', pct >= 80);
+  el.setAttribute('aria-label', `Level ${s.level}, ${s.xp} XP. ${left} XP to level ${s.level + 1}. Tap to see your XP history.`);
 }
 
 async function route() {
