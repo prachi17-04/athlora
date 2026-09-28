@@ -443,10 +443,11 @@ function scoreMission(mission, results, { firstToday, streakAfter, buddiesMovedT
   let doneCount = 0;
   const formScores = [];
   const breakdown = [];
+  const perItem = []; // XP earned by each exercise, for the XP history
 
   mission.items.forEach((item, i) => {
     const r = results[i] || {};
-    if (!r.done) return;
+    if (!r.done) { perItem.push({ name: item.name, xp: 0, done: false }); return; }
     doneCount++;
     const achieved = Math.max(0, Number(r.achieved ?? item.target) || 0);
     const ratio = Math.min(1, achieved / item.target);
@@ -456,10 +457,17 @@ function scoreMission(mission, results, { firstToday, streakAfter, buddiesMovedT
     xp += itemXp;
     activeSec += item.estSec * ratio;
     const form = r.formScore === null || r.formScore === undefined ? NaN : Number(r.formScore);
+    let bonus = 0;
     if (verified && item.cv && Number.isFinite(form) && form >= 0 && form <= 100) {
       formScores.push(form);
-      if (form >= 80) formXp += Math.round(itemXp * 0.2);
+      if (form >= 80) { bonus = Math.round(itemXp * 0.2); formXp += bonus; }
     }
+    perItem.push({
+      name: item.name, xp: itemXp + bonus, done: true,
+      how: verified ? (item.cv ? 'camera' : 'sensors') : 'self',
+      achieved: Math.round(achieved), target: item.target, unit: item.unit,
+      form: verified && item.cv && Number.isFinite(form) ? Math.round(form) : null,
+    });
   });
 
   breakdown.push({ label: 'Mission work', xp });
@@ -485,7 +493,7 @@ function scoreMission(mission, results, { firstToday, streakAfter, buddiesMovedT
     breakdown.push({ label: `You and ${buddiesMovedToday} ${buddiesMovedToday === 1 ? 'buddy' : 'buddies'} moved today`, xp: 10 });
   }
   const formAvg = formScores.length ? Math.round(formScores.reduce((a, b) => a + b, 0) / formScores.length) : null;
-  return { xp, activeMin: Math.round((activeSec / 60) * 10) / 10, verifiedCount, doneCount, formAvg, breakdown };
+  return { xp, activeMin: Math.round((activeSec / 60) * 10) / 10, verifiedCount, doneCount, formAvg, breakdown, items: perItem };
 }
 
 // ---------- Fitness assessment (AI Engine 1) ----------

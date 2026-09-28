@@ -61,7 +61,7 @@ function paint() {
           <div class="upper">${esc(view.title)} · ${view.minutes} min${view.seated ? ' · seated' : ''}</div>
           <h1 style="font-size:clamp(28px,4vw,52px);font-weight:800;margin:10px 0">Scan to join, or enter the code in ATHLORA</h1>
           <div class="big-code">${esc(view.code)}</div>
-          <p class="muted mt-16">ATHLORA app → Community → Join a class break</p>
+          <p class="muted mt-16">ATHLORA app → Class tab → Join</p>
           ${isHost ? `<button class="btn primary mt-16" id="start" style="font-size:20px;padding:16px 28px">▶ Start break for everyone</button>` : '<p class="small muted mt-16">Waiting for the teacher to start…</p>'}
         </div>
       </div>`;
@@ -84,10 +84,10 @@ function paint() {
       <div>
         <div class="p-move">Great job, class! 🎉</div>
         <p class="p-cue">${view.completed} student${view.completed === 1 ? '' : 's'} completed the break in ATHLORA and earned XP.</p>
-        ${isHost ? '<a class="btn primary mt-16" href="/#/community" style="display:inline-flex">Back to ATHLORA</a>' : ''}
+        ${isHost ? '<a class="btn primary mt-16" href="/#/class" style="display:inline-flex">Back to ATHLORA</a>' : ''}
       </div>`;
   } else {
-    main = '<div><div class="p-move">This break has expired</div><p class="p-cue">Create a new one from the Community tab.</p></div>';
+    main = '<div><div class="p-move">This break has expired</div><p class="p-cue">Create a new one from the Class tab.</p></div>';
   }
   root.innerHTML = `<div class="proj-main">${main}</div>${foot}`;
   root.querySelector('#start')?.addEventListener('click', () => { beep(520); hostAction('start'); });
@@ -96,7 +96,7 @@ function paint() {
 
 (async () => {
   if (!code) {
-    root.innerHTML = '<div class="proj-main"><div><div class="p-move">No break code</div><p class="p-cue">Create a class break from ATHLORA → Community.</p></div></div>';
+    root.innerHTML = '<div class="proj-main"><div><div class="p-move">No break code</div><p class="p-cue">Create a class break from ATHLORA → Class tab.</p></div></div>';
     return;
   }
   try { await refresh(); } catch (err) {

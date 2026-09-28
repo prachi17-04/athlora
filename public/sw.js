@@ -1,5 +1,5 @@
 // ATHLORA service worker: makes the app installable and loads the shell offline.
-const CACHE = 'athlora-v5';
+const CACHE = 'athlora-v7';
 const SHELL = [
   '/', '/index.html', '/css/styles.css', '/manifest.webmanifest',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
@@ -9,7 +9,7 @@ const SHELL = [
   '/institution.html', '/js/institution.js',
   '/js/sensors.js', '/js/posture.js', '/js/breakclock.js', '/js/views/study.js', '/js/views/break.js',
   '/break.html', '/js/break-screen.js', '/verify.html', '/js/verify.js',
-  '/js/demo.js', '/js/sound.js',
+  '/js/demo.js', '/js/sound.js', '/js/views/classbreak.js', '/js/views/xp.js',
 ];
 
 self.addEventListener('install', (e) => {

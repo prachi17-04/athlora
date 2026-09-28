@@ -8,6 +8,8 @@ import * as passport from './views/passport.js';
 import * as community from './views/campus.js';
 import * as study from './views/study.js';
 import * as classBreak from './views/break.js';
+import * as classBreakHome from './views/classbreak.js';
+import * as xpHistory from './views/xp.js';
 
 const root = document.getElementById('app');
 
@@ -18,13 +20,14 @@ export const store = {
   missionRequest: null, // { minutes, environment } handed from dashboard to Move
 };
 
-const ROUTES = { dashboard, move, setup, passport, community, campus: community, study, break: classBreak };
+const ROUTES = { dashboard, move, setup, passport, community, campus: community, study, break: classBreak, class: classBreakHome, xp: xpHistory };
 const NAV = [
   ['dashboard', 'Dashboard', ICONS.home],
   ['setup', 'AI Setup', ICONS.ai],
   ['move', 'Move', ICONS.move],
   ['passport', 'Passport', ICONS.passport],
   ['community', 'Community', ICONS.community],
+  ['class', 'Class', ICONS.classbreak],
 ];
 
 export const app = {
@@ -56,7 +59,7 @@ function mountShell() {
     <div class="shell">
       <header class="topbar">
         <div class="brand"><img src="/icons/icon.svg" alt="" />ATHLORA</div>
-        <span class="tag lime" id="lvlTag"></span>
+        <a class="tag lime xp-tag" id="lvlTag" href="#/xp" title="See how you earned your XP"></a>
       </header>
       <main id="view"></main>
     </div>
@@ -71,7 +74,7 @@ function mountShell() {
 
 export function updateLevelTag() {
   const el = document.getElementById('lvlTag');
-  if (el && store.stats) el.textContent = `LVL ${store.stats.level} · ${store.stats.xp} XP`;
+  if (el && store.stats) el.textContent = `LVL ${store.stats.level} · ${store.stats.xp} XP ›`;
 }
 
 async function route() {
@@ -89,7 +92,7 @@ async function route() {
     history.replaceState(null, '', '#/move');
   }
   const view = ROUTES[name] || dashboard;
-  const navKey = { campus: 'community', break: 'community', study: 'dashboard' }[name] || (ROUTES[name] ? name : 'dashboard');
+  const navKey = { campus: 'community', break: 'class', study: 'dashboard' }[name] || (ROUTES[name] ? name : 'dashboard');
   document.querySelectorAll('[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === navKey));
   if (typeof cleanup === 'function') cleanup();
   cleanup = null;

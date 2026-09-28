@@ -82,68 +82,116 @@ export async function render(el, app) {
     const sp = u.sports || { plays: false, list: [] };
     const base = stats.baseline, latest = stats.latest;
 
+    // "How well does ATHLORA know you?" checklist
+    const ttCount = (u.timetable?.classes || []).length;
+    const steps = [
+      { id: 'basics', icon: '👤', label: 'Profile & health', done: true, target: 'secHealth' },
+      { id: 'baseline', icon: '📷', label: 'AI fitness test', done: Boolean(base) || !testsFor().length, target: 'secBaseline' },
+      { id: 'goals', icon: '🎯', label: 'Goals & equipment', done: Boolean(p.contextSaved), target: 'secGoals' },
+      { id: 'timetable', icon: '📅', label: 'Class timetable', done: ttCount > 0, target: 'secTimetable' },
+      { id: 'community', icon: '👥', label: 'Join a community', done: Boolean(u.campus), target: null },
+    ];
+    const pct = Math.round((steps.filter((s) => s.done).length / steps.length) * 100);
+    const R = 34, C = 2 * Math.PI * R;
+    const nextStep = steps.find((s) => !s.done);
+    const goalLabel = Object.fromEntries(GOAL_OPTIONS)[p.goal] || 'General fitness';
+    const envLabel = Object.fromEntries(ENV_OPTIONS)[p.environment] || 'Room';
+    const tests = testsFor();
+    const retestDays = latest ? Math.max(0, 14 - Math.floor((Date.now() - latest.createdAt) / 86400000)) : null;
+
     el.innerHTML = `
       <div class="stack">
-        <div>
-          <div class="upper">AI Setup</div>
-          <h1 style="font-size:26px;font-weight:800;margin-top:4px">Teach ATHLORA about you</h1>
-        </div>
+        <section class="card coach-hero">
+          <div class="coach-top">
+            <div class="coach-ring">
+              <svg width="84" height="84" viewBox="0 0 84 84">
+                <circle cx="42" cy="42" r="${R}" fill="none" stroke="var(--card-2)" stroke-width="8"/>
+                <circle cx="42" cy="42" r="${R}" fill="none" stroke="var(--accent)" stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="${C}" stroke-dashoffset="${C * (1 - pct / 100)}" transform="rotate(-90 42 42)"/>
+              </svg>
+              <b>${pct}%</b>
+            </div>
+            <div style="flex:1;min-width:0">
+              <div class="upper">Your AI coach</div>
+              <h1 style="font-size:22px;font-weight:800;margin-top:4px;line-height:1.2">${pct === 100 ? 'ATHLORA knows you well 🎉' : 'Help ATHLORA get to know you'}</h1>
+              <p class="small muted mt-8">${nextStep ? `Next: <b style="color:var(--text)">${nextStep.label}</b>. The more it knows, the better your missions fit.` : 'Every mission is now tuned to your level, goals, health and day.'}</p>
+            </div>
+          </div>
+          <div class="coach-steps mt-16">
+            ${steps.map((s) => `<button type="button" class="coach-step ${s.done ? 'done' : ''}" data-jump="${s.target || ''}" ${s.id === 'community' ? 'data-nav-to="community"' : ''}>
+              <span class="coach-step-icon">${s.done ? '✓' : s.icon}</span><span>${s.label}</span></button>`).join('')}
+          </div>
+        </section>
 
         ${healthPlanCard()}
 
-        <section class="card hero">
-          <div class="row between"><h2>AI Fitness Baseline</h2>${base ? `<span class="tag lime">${esc(latest.level)}</span>` : '<span class="tag">Not set</span>'}</div>
-          <p class="muted small mt-8">${!testsFor().length
-            ? 'Your health-safe plan pauses the fitness tests for now. Keep moving with gentle missions, and take the assessment once your doctor clears you.'
-            : p.adaptive
-            ? 'Seated mode: a camera test of seated arm raises builds your fitness profile.'
-            : `Computer vision measures ${testsFor().map((t) => t.title.toLowerCase()).join(', ')}${testsFor().some((t) => t.key === 'squats') ? ' and squat-depth mobility' : ''}, mapped to the Fit India Fitness Protocol components.${plan.active ? ' Tests that don\'t suit your health plan are left out.' : ''}`}</p>
-          <p class="tiny muted mt-8">🔒 Pose detection runs on your device. Video is never recorded or uploaded.</p>
-          ${base ? `
-            <div class="grid-2 mt-16">
-              <div class="stat"><div class="l">Baseline</div><div class="v" style="font-size:16px">${fmtDate(base.createdAt)}</div></div>
-              <div class="stat"><div class="l">Latest test</div><div class="v" style="font-size:16px">${fmtDate(latest.createdAt)}</div></div>
-            </div>` : ''}
-          ${testsFor().length ? `<button class="btn primary block mt-16" id="startAssess">${ICONS.camera} ${base ? 'Re-assess to measure growth' : `Start ${Math.max(1, Math.ceil(testsFor().length * 0.6))}-minute assessment`}</button>` : ''}
+        <section class="card hero" id="secBaseline">
+          <div class="row between"><h2>📷 AI fitness test</h2>${base ? `<span class="tag lime" style="text-transform:capitalize">${esc(latest.level)}</span>` : '<span class="tag">Not taken yet</span>'}</div>
+          <p class="muted small mt-8">${!tests.length
+            ? 'Your health-safe plan pauses the fitness tests for now. Keep moving with gentle missions, and take the test once your doctor clears you.'
+            : base
+            ? `Last tested ${fmtDate(latest.createdAt)}. ${retestDays ? `Re-test in ${retestDays} day${retestDays === 1 ? '' : 's'} to see how much you've grown.` : 'Re-test now to see how much you\'ve grown!'}`
+            : 'A quick camera test finds your starting level, so every mission matches you from day one.'}</p>
+          ${tests.length ? `
+            <div class="test-strip mt-16">
+              ${tests.map((t) => `
+                <div class="test-card">
+                  <div class="test-pic">${TEST_DEMO[t.key] ? stillSVG(TEST_DEMO[t.key]) : ''}</div>
+                  <b>${esc(t.title)}</b>
+                  <span class="tiny muted">${t.window ? `${t.window} s` : t.target ? `up to ${t.target} s` : 'max hold'}</span>
+                </div>`).join('')}
+            </div>
+            <button class="btn primary block mt-16" id="startAssess">${ICONS.camera} ${base ? 'Re-test on camera' : `Start ${Math.max(1, Math.ceil(tests.length * 0.6))}-minute test`}</button>` : ''}
+          <p class="tiny muted mt-8">🔒 Camera analysis runs on your device. Video is never recorded or uploaded.</p>
         </section>
 
-        <div class="section-title" id="timetable">Class timetable</div>
-        <section class="card" id="ttBox"></section>
+        <details class="card setup-sec" id="secTimetable" ${ttCount ? '' : 'open'}>
+          <summary><span class="sec-icon">📅</span><span class="sec-text"><b>Class timetable</b>
+            <span class="tiny muted">${ttCount ? `${ttCount} class${ttCount === 1 ? '' : 'es'} a week · finds your free gaps` : 'Not added yet · find movement windows between classes'}</span></span></summary>
+          <div id="ttBox" class="mt-16"></div>
+        </details>
 
-        <div class="section-title">Your context</div>
-        <section class="card">
-          <p class="upper">Fitness level</p>
-          <div class="mt-8">${chips('level', LEVEL_OPTIONS, p.fitnessLevel)}</div>
-          <p class="tiny muted mt-8">${p.levelSource === 'assessment' ? 'Set by your AI assessment.' : p.levelSource === 'manual' ? 'Set manually by you.' : 'Starting estimate — your AI assessment will refine it.'}</p>
-          <p class="upper mt-16">Goal</p>
-          <div class="mt-8">${chips('goal', GOAL_OPTIONS, p.goal)}</div>
-          <p class="upper mt-16">Where you usually are</p>
-          <div class="mt-8">${chips('env', ENV_OPTIONS, p.environment)}</div>
-          <p class="upper mt-16">Equipment you have</p>
-          <div class="mt-8">${chips('equip', EQUIP_OPTIONS, p.equipment, { multi: true })}</div>
-          <p class="upper mt-16">Movement mode</p>
-          <div class="mt-8">${chips('mode', [['standing', 'Standing'], ['seated', 'Seated / adaptive']], p.adaptive ? 'seated' : 'standing')}</div>
-          <p class="tiny muted mt-8">Seated mode builds every mission from chair- and wheelchair-friendly moves, for students with disabilities, injuries or limited mobility.</p>
-          <button class="btn ghost block mt-16" id="saveCtx">Save context</button>
-        </section>
-
-        <div class="section-title">Health & sports</div>
-        <section class="card">
-          <p class="upper">Medical conditions</p>
-          <div class="mt-8">${chips('medHas', [['no', 'No'], ['yes', 'Yes']], med.has ? 'yes' : 'no')}</div>
-          <div id="medBox" ${med.has ? '' : 'hidden'}>
-            <div class="mt-8">${chips('medList', MEDICAL_OPTIONS.map((m) => [m, m]), med.conditions, { multi: true })}</div>
-            <input class="input mt-8" id="medNotes" placeholder="Notes (optional)" maxlength="300" value="${esc(med.notes)}" />
-            <p class="note mt-8">With a condition, missions skip high-impact moves. ATHLORA does not diagnose — check with your doctor.</p>
+        <details class="card setup-sec" id="secGoals">
+          <summary><span class="sec-icon">🎯</span><span class="sec-text"><b>Goals & equipment</b>
+            <span class="tiny muted">${esc(goalLabel)} · ${esc(envLabel)}${p.equipment?.length ? ` · ${p.equipment.length} equipment` : ''}${p.adaptive ? ' · seated mode' : ''}</span></span></summary>
+          <div class="mt-16">
+            <p class="upper">Fitness level</p>
+            <div class="mt-8">${chips('level', LEVEL_OPTIONS, p.fitnessLevel)}</div>
+            <p class="tiny muted mt-8">${p.levelSource === 'assessment' ? 'Set by your AI fitness test.' : p.levelSource === 'manual' ? 'Set manually by you.' : 'Starting estimate. Your AI fitness test will refine it.'}</p>
+            <p class="upper mt-16">Goal</p>
+            <div class="mt-8">${chips('goal', GOAL_OPTIONS, p.goal)}</div>
+            <p class="upper mt-16">Where you usually are</p>
+            <div class="mt-8">${chips('env', ENV_OPTIONS, p.environment)}</div>
+            <p class="upper mt-16">Equipment you have</p>
+            <div class="mt-8">${chips('equip', EQUIP_OPTIONS, p.equipment, { multi: true })}</div>
+            <p class="upper mt-16">Movement mode</p>
+            <div class="mt-8">${chips('mode', [['standing', 'Standing'], ['seated', 'Seated / adaptive']], p.adaptive ? 'seated' : 'standing')}</div>
+            <p class="tiny muted mt-8">Seated mode builds every mission from chair- and wheelchair-friendly moves, for students with disabilities, injuries or limited mobility.</p>
+            <button class="btn primary block mt-16" id="saveCtx">Save goals & equipment</button>
           </div>
-          <p class="upper mt-16">Plays sports</p>
-          <div class="mt-8">${chips('spPlays', [['no', 'No'], ['yes', 'Yes']], sp.plays ? 'yes' : 'no')}</div>
-          <div id="spBox" ${sp.plays ? '' : 'hidden'}>
-            <input class="input mt-8" id="spList" placeholder="e.g. Cricket, Badminton" maxlength="200" value="${esc(sp.list.join(', '))}" />
+        </details>
+
+        <details class="card setup-sec" id="secHealth">
+          <summary><span class="sec-icon">🩺</span><span class="sec-text"><b>Health & sports</b>
+            <span class="tiny muted">${med.has ? `${med.conditions.length ? esc(med.conditions.join(', ')) : 'Condition noted'}` : 'No health conditions'} · ${sp.plays && sp.list.length ? esc(sp.list.join(', ')) : 'no sports'}</span></span></summary>
+          <div class="mt-16">
+            <p class="upper">Medical conditions</p>
+            <div class="mt-8">${chips('medHas', [['no', 'No'], ['yes', 'Yes']], med.has ? 'yes' : 'no')}</div>
+            <div id="medBox" ${med.has ? '' : 'hidden'}>
+              <div class="mt-8">${chips('medList', MEDICAL_OPTIONS.map((m) => [m, m]), med.conditions, { multi: true })}</div>
+              <input class="input mt-8" id="medNotes" placeholder="Notes (optional)" maxlength="300" value="${esc(med.notes)}" />
+              <p class="note mt-8">ATHLORA builds a health-safe plan from this. It does not diagnose anything, so please check with your doctor.</p>
+            </div>
+            <p class="upper mt-16">Plays sports</p>
+            <div class="mt-8">${chips('spPlays', [['no', 'No'], ['yes', 'Yes']], sp.plays ? 'yes' : 'no')}</div>
+            <div id="spBox" ${sp.plays ? '' : 'hidden'}>
+              <input class="input mt-8" id="spList" placeholder="e.g. Cricket, Badminton" maxlength="200" value="${esc(sp.list.join(', '))}" />
+            </div>
+            <button class="btn primary block mt-16" id="saveHealth">Save health & sports</button>
           </div>
-          <button class="btn ghost block mt-16" id="saveHealth">Save health & sports</button>
-        </section>
+        </details>
       </div>`;
+
 
     bindChips(el, (name, val) => {
       if (name === 'medHas') el.querySelector('#medBox').hidden = val !== 'yes';
@@ -168,9 +216,18 @@ export async function render(el, app) {
     });
 
     drawTimetable();
+    el.querySelectorAll('.coach-step').forEach((b) => b.addEventListener('click', () => {
+      if (b.dataset.navTo) return app.navigate(b.dataset.navTo);
+      const sec = b.dataset.jump && el.querySelector('#' + b.dataset.jump);
+      if (!sec) return;
+      if (sec.tagName === 'DETAILS') sec.open = true;
+      sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
     if (store.scrollTo === 'timetable') {
       store.scrollTo = null;
-      el.querySelector('#timetable').scrollIntoView({ behavior: 'smooth' });
+      const sec = el.querySelector('#secTimetable');
+      sec.open = true;
+      sec.scrollIntoView({ behavior: 'smooth' });
     }
 
     el.querySelector('#saveCtx').onclick = async () => {
@@ -184,7 +241,7 @@ export async function render(el, app) {
         if (chipValue(el, 'level') !== p.fitnessLevel) body.fitnessLevel = chipValue(el, 'level');
         const r = await api('/me/context', { method: 'PUT', body });
         store.user = r.user;
-        toast('Context saved');
+        toast('Goals & equipment saved');
         drawMain();
       } catch (err) { toast(err.message, true); }
     };

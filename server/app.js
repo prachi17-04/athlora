@@ -55,10 +55,10 @@ function localNow(offset, ts = Date.now()) {
 }
 
 // Adds XP and logs it with a timestamp, so rank changes ("moved up today") can be computed
-function addXp(u, amount) {
+function addXp(u, amount, detail = {}) {
   if (!amount) return;
   u.xp = (u.xp || 0) + amount;
-  u.xpLog = [...(u.xpLog || []), { at: Date.now(), xp: amount }].slice(-300);
+  u.xpLog = [...(u.xpLog || []), { at: Date.now(), xp: amount, ...detail }].slice(-300);
 }
 // XP a student had at a moment in the past (log covers recent awards; older XP counts as already earned)
 function xpAt(u, ts) {
@@ -303,6 +303,8 @@ function createApp(kv) {
     if (engine.ENVIRONMENTS.includes(b.environment)) u.profile.environment = b.environment;
     if (Array.isArray(b.equipment)) u.profile.equipment = b.equipment.filter((e) => engine.EQUIPMENT.includes(e));
     if (typeof b.adaptive === 'boolean') u.profile.adaptive = b.adaptive;
+    // Marks the "Goals & equipment" step as done in the AI Setup checklist
+    if (b.goal !== undefined || b.environment !== undefined || b.equipment !== undefined) u.profile.contextSaved = true;
     if (typeof b.name === 'string' && clean(b.name).length >= 2) u.name = clean(b.name, 60);
     if (b.medical) u.medical = cleanMedical(b.medical);
     if (b.sports) u.sports = cleanSports(b.sports);
@@ -367,6 +369,38 @@ function createApp(kv) {
     });
   }));
 
+  // =============== XP HISTORY (where every point came from) ===============
+  api.get('/xp-history', auth, (req, res) => {
+    const u = req.user;
+    const acts = u.activities || [];
+    const used = new Set();
+    const entries = (u.xpLog || []).map((e) => {
+      let entry = { at: e.at, xp: e.xp, kind: e.kind || null, title: e.title || null, items: e.items || null, bonuses: e.bonuses || [] };
+      if (e.activityId) used.add(e.activityId);
+      // Entries logged before details were recorded: match them to the mission/class break they came from
+      if (!entry.kind) {
+        const a = acts.find((x) => !used.has(x.id) && x.xp === e.xp && Math.abs(x.completedAt - e.at) < 10000);
+        if (a) { used.add(a.id); entry = { ...entry, kind: a.classBreak ? 'class' : 'mission', title: a.title }; }
+        else entry = { ...entry, kind: 'other', title: 'Fitness XP' };
+      }
+      return entry;
+    });
+    const loggedIds = new Set((u.xpLog || []).map((e) => e.activityId).filter(Boolean));
+    // Missions finished before the XP log existed
+    for (const a of acts) {
+      if (used.has(a.id) || loggedIds.has(a.id) || !a.xp) continue;
+      entries.push({ at: a.completedAt, xp: a.xp, kind: a.classBreak ? 'class' : 'mission', title: a.title, items: null, bonuses: [] });
+    }
+    const shown = entries.reduce((s, e) => s + e.xp, 0);
+    const earlier = (u.xp || 0) - shown;
+    if (earlier > 0) entries.push({ at: u.createdAt, xp: earlier, kind: 'other', title: 'Earlier XP (fitness tests and sessions before detailed history)', items: null, bonuses: [] });
+    entries.sort((a, b) => b.at - a.at);
+    const byKind = {};
+    for (const e of entries) byKind[e.kind] = (byKind[e.kind] || 0) + e.xp;
+    const stats = computeStats(u, tzOffset(req));
+    res.json({ xp: stats.xp, level: stats.level, levelProgress: stats.levelProgress, nextLevelXp: stats.nextLevelXp, byKind, entries: entries.slice(0, 200) });
+  });
+
   // =============== HEALTH-SAFE PLAN ===============
   // What a student with a reported condition should (and shouldn't) do. General guidance, not a diagnosis.
   api.get('/health-plan', auth, (req, res) => res.json(engine.healthPlan(req.user)));
@@ -415,14 +449,19 @@ function createApp(kv) {
     // Steps counted by the phone's motion sensors on walking / stairs moves
     const steps = results.reduce((s, r, i) => s + (mission.items[i]?.sensor && r?.done && r.verified ? Math.min(20000, Math.max(0, Math.round(Number(r.steps) || 0))) : 0), 0);
     u.activities = u.activities || [];
+    const activityId = uid();
     u.activities.push({
-      id: uid(), missionId: mission.id, title: mission.title, minutes: mission.minutes,
+      id: activityId, missionId: mission.id, title: mission.title, minutes: mission.minutes,
       environment: mission.environment, comeback: mission.comeback,
       xp: score.xp, activeMin: score.activeMin, verifiedCount: score.verifiedCount, doneCount: score.doneCount,
       formAvg: score.formAvg, steps,
       completedAt: Date.now(),
     });
-    addXp(u, score.xp);
+    addXp(u, score.xp, {
+      kind: 'mission', title: mission.title, activityId,
+      items: score.items,
+      bonuses: score.breakdown.filter((b) => b.xp && b.label !== 'Mission work' && b.label !== 'Good form bonus'),
+    });
     await saveUser(u);
     res.json({ reward: { ...score, steps }, adaptations, stats: computeStats(u, offset) });
   }));
@@ -457,7 +496,11 @@ function createApp(kv) {
       xp += bonus;
       breakdown.push({ label: `Improved ${growth.fgi}% since last test`, xp: bonus });
     }
-    addXp(u, xp);
+    addXp(u, xp, {
+      kind: 'assessment', title: prior.length ? 'AI fitness re-test' : 'AI fitness test',
+      bonuses: breakdown,
+      items: Object.entries(results).filter(([k]) => k !== 'mobility').map(([k, v]) => ({ name: engine.TESTS.find((t) => t.key === k)?.label || k, result: v, how: 'camera' })),
+    });
     // A fresh assessment is the best signal, so it always resets the level (students can still override it later).
     // Learned targets are relative to the level, so a new level starts learning afresh.
     const recalibrated = u.profile.fitnessLevel !== level && Object.keys(u.adaptiveTargets || {}).length > 0;
@@ -759,7 +802,7 @@ function createApp(kv) {
       if (session.goodPct >= 70) { xp += 5; breakdown.push({ label: 'Good posture 70%+ of the time', xp: 5 }); }
     }
     u.studySessions = [...(u.studySessions || []), session].slice(-200);
-    addXp(u, xp);
+    addXp(u, xp, { kind: 'study', title: `Posture Guardian study session · ${Math.round(minutes)} min`, bonuses: breakdown });
     await saveUser(u);
     res.json({ reward: { xp, breakdown }, stats: computeStats(u, tzOffset(req)) });
   }));
@@ -865,11 +908,12 @@ function createApp(kv) {
       breakdown.push({ label: `${streakAfter}-day consistency`, xp: bonus });
     }
     const activeMin = Math.round((totalSec(b) / 60) * 10) / 10;
+    const activityId = uid();
     u.activities = [...(u.activities || []), {
-      id: uid(), title: `CLASS BREAK · ${b.title}`, minutes: b.minutes, environment: 'classroom', comeback: false,
+      id: activityId, title: `CLASS BREAK · ${b.title}`, minutes: b.minutes, environment: 'classroom', comeback: false,
       classBreak: true, xp, activeMin, verifiedCount: 0, doneCount: b.moves.length, formAvg: null, steps: 0, completedAt: Date.now(),
     }];
-    addXp(u, xp);
+    addXp(u, xp, { kind: 'class', title: `Class break · ${b.title}`, activityId, bonuses: breakdown });
     await kv.set(`breakdone/${b.code}/${u.id}`, { at: Date.now() });
     await saveUser(u);
     res.json({ reward: { xp, breakdown, activeMin }, stats: computeStats(u, offset) });

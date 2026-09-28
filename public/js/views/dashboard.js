@@ -1,5 +1,5 @@
 import { api } from '../api.js';
-import { esc, fmtAgo, chips, bindChips, chipValue, toast, TIME_OPTIONS, ENV_OPTIONS } from '../ui.js';
+import { esc, chips, bindChips, chipValue, toast, TIME_OPTIONS, ENV_OPTIONS } from '../ui.js';
 import { remindersEnabled, remindersSupported, enableReminders, disableReminders, scheduleReminders } from '../reminders.js';
 
 const ENV_LABEL = Object.fromEntries(ENV_OPTIONS);
@@ -10,23 +10,9 @@ function inMinutes(start, nowMin) {
 }
 
 // Timetable-aware Opportunity Engine: today's free windows between classes
+// Shown only when the student has added a timetable (in AI Setup) and has classes today
 function opportunitiesCard(o) {
-  if (!o) return '';
-  if (!o.configured) {
-    return `
-      <section class="card">
-        <div class="row between"><h2>Find my movement windows</h2><span class="tag lime">New</span></div>
-        <p class="muted small mt-8">Add your class timetable once. ATHLORA spots the free gaps between classes, turns each into a Move Mission, and reminds you when it starts.</p>
-        <button class="btn ghost block mt-16" id="addTimetable">Add my timetable</button>
-      </section>`;
-  }
-  if (!o.hasClassesToday) {
-    return `
-      <section class="card">
-        <h2>Today's movement windows</h2>
-        <p class="muted small mt-8">No classes on your timetable today, so any time works. A 10-minute mission is a great start.</p>
-      </section>`;
-  }
+  if (!o || !o.configured || !o.hasClassesToday) return '';
   const next = o.items.find((x) => x.status === 'now') || o.items.find((x) => x.status === 'upcoming');
   const reminders = remindersEnabled();
   return `
@@ -296,21 +282,7 @@ export async function render(el, app) {
         </div>
       </div>
 
-      ${!stats.baseline ? `
-        <section class="card">
-          <div class="row between"><h3>Set your AI Fitness Baseline</h3><span class="tag lime">+40 XP</span></div>
-          <p class="muted small mt-8">A 2-minute camera check (squats, push-ups, jumping jacks, plank). ATHLORA uses it to match missions to your level and to measure your growth.</p>
-          <button class="btn ghost block mt-16" id="goSetup">Start AI setup</button>
-        </section>` : ''}
 
-      <div class="section-title">Recent activity</div>
-      ${stats.recent.length
-        ? `<section class="card" style="padding:6px 16px">${stats.recent.map((a) => `
-            <div class="reward-line">
-              <div><b>${esc(a.title)}</b><div class="tiny muted">${fmtAgo(a.completedAt)} · ${a.activeMin} active min${a.verifiedCount ? ` · ${a.verifiedCount} verified` : ''}</div></div>
-              <b class="accent">+${a.xp}</b>
-            </div>`).join('')}</section>`
-        : `<div class="empty">No missions yet. Your first one can take just 3 minutes.</div>`}
     </div>`;
 
   bindChips(el);
@@ -322,8 +294,6 @@ export async function render(el, app) {
     store.missionRequest = { minutes: 4, environment: u.profile.environment || 'room' };
     app.navigate('move');
   });
-  el.querySelector('#goSetup')?.addEventListener('click', () => app.navigate('setup'));
-  el.querySelector('#addTimetable')?.addEventListener('click', () => { store.scrollTo = 'timetable'; app.navigate('setup'); });
   el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('community'));
   el.querySelector('#studyGo').onclick = () => app.navigate('study');
   el.querySelector('#lbScope')?.addEventListener('click', async (e) => {

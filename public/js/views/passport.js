@@ -1,12 +1,6 @@
 import { api } from '../api.js';
 import { esc, fmtDate, toast } from '../ui.js';
 
-const TEST_LABELS = {
-  squats: 'Squats (30s)', pushups: 'Push-ups (30s)', jumpingJacks: 'Jumping jacks (30s)',
-  plankSec: 'Plank hold (s)', mobility: 'Mobility score', flexibility: 'Forward-fold reach',
-  balanceSec: 'Single-leg balance (s)', armRaises: 'Seated arm raises (30s)',
-};
-
 const BAND_COLOR = { 'Needs work': 'var(--danger)', Fair: 'var(--warn)', Good: 'var(--blue)', Excellent: 'var(--accent)' };
 
 // Fit India Fitness Protocol component report, from the latest AI assessment
@@ -68,40 +62,10 @@ function activityChart(days) {
     </svg>`;
 }
 
-function compareBlock(growth, baseline) {
-  if (!growth) {
-    return `
-      <div class="cmp">${Object.entries(baseline.results).map(([k, v]) => `
-        <div class="row between small"><span class="muted">${esc(TEST_LABELS[k] || k)}</span><b>${v}</b></div>`).join('')}
-      </div>
-      <p class="small muted mt-16">Re-assess from AI Setup to see how much you've grown.</p>`;
-  }
-  return `
-    <div class="row small" style="gap:14px;margin-bottom:10px">
-      <span class="row" style="gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:#4a607c"></span>Baseline</span>
-      <span class="row" style="gap:6px"><span style="width:10px;height:10px;border-radius:3px;background:var(--accent)"></span>Latest</span>
-    </div>
-    <div class="stack" style="gap:14px">
-      ${growth.perTest.map((p) => {
-        const max = Math.max(p.baseline, p.latest, 1);
-        return `
-          <div class="cmp-row">
-            <span>${esc(p.label)}</span>
-            <b style="color:${p.pct >= 0 ? 'var(--accent)' : 'var(--warn)'}">${p.pct >= 0 ? '+' : ''}${p.pct}%</b>
-            <div class="bars">
-              <div class="row" style="gap:8px"><div class="bar" style="flex:1"><div style="width:${(p.baseline / max) * 100}%;background:#4a607c"></div></div><span class="tiny muted" style="width:28px;text-align:right">${p.baseline}</span></div>
-              <div class="row" style="gap:8px"><div class="bar" style="flex:1"><div style="width:${(p.latest / max) * 100}%"></div></div><span class="tiny" style="width:28px;text-align:right">${p.latest}</span></div>
-            </div>
-          </div>`;
-      }).join('')}
-    </div>`;
-}
-
 export async function render(el, app) {
   const { store } = app;
   const s = await app.refreshStats();
   const u = store.user;
-  const g = s.growth;
   const anyActivity = s.last14.some((d) => d.missions > 0);
 
   const badges = [
@@ -110,7 +74,6 @@ export async function render(el, app) {
     ['7d', '7-day streak', s.bestStreak >= 7],
     ['CV', 'First verified move', s.totals.verifiedMoves >= 1],
     ['AI', 'Baseline set', Boolean(s.baseline)],
-    ['↑', '+10% growth', Boolean(g && g.fgi >= 10)],
     ['↺', 'Comeback', s.totals.comebacks >= 1],
     ['10', '10 missions', s.totals.missions >= 10],
     ['60', '60 active min', s.totals.activeMin >= 60],
@@ -135,20 +98,6 @@ export async function render(el, app) {
           <div><dt>Member since</dt><dd>${fmtDate(u.createdAt)}</dd></div>
         </dl>
       </div>
-
-      <section class="card">
-        <div class="upper">Fitness Growth Index</div>
-        ${g ? `
-          <div class="fgi-num ${g.fgi >= 0 ? 'pos' : 'neg'} mt-8">${g.fgi >= 0 ? '+' : ''}${g.fgi}%</div>
-          <p class="small muted mt-8">Your growth since your baseline on ${fmtDate(s.baseline.createdAt)}. ATHLORA measures how much <i>you</i> improve — not how you compare to athletes.</p>
-          <div class="mt-16">${compareBlock(g, s.baseline)}</div>`
-        : s.baseline ? `
-          <p class="small muted mt-8">Baseline recorded on ${fmtDate(s.baseline.createdAt)}.</p>
-          <div class="mt-16">${compareBlock(null, s.baseline)}</div>`
-        : `
-          <div class="empty mt-16">Set your AI Fitness Baseline to start tracking growth.<br/><br/>
-            <button class="btn sm primary" id="toSetup">Go to AI Setup</button></div>`}
-      </section>
 
       ${fitIndiaCard(s)}
 
@@ -211,7 +160,6 @@ export async function render(el, app) {
       </section>
     </div>`;
 
-  el.querySelector('#toSetup')?.addEventListener('click', () => app.navigate('setup'));
   el.querySelector('#logout').onclick = () => app.logout();
   el.querySelector('#makeCert').onclick = async (e) => {
     const btn = e.currentTarget;
