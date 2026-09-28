@@ -1,5 +1,5 @@
 // ATHLORA service worker: makes the app installable and loads the shell offline.
-const CACHE = 'athlora-v7';
+const CACHE = 'athlora-v8';
 const SHELL = [
   '/', '/index.html', '/css/styles.css', '/manifest.webmanifest',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png',

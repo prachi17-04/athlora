@@ -326,8 +326,11 @@ function generateMission(user, ctx, recent) {
   const equipment = (ctx.equipment || []).filter((e) => EQUIPMENT.includes(e));
   const classroom = environment === 'classroom';
   const comeback = Boolean(recent?.comeback);
-  let minutes = Math.max(2, Math.min(30, Math.round(Number(ctx.minutes) || 5)));
+  let minutes = Math.max(2, Math.min(45, Math.round(Number(ctx.minutes) || 5)));
   if (comeback) minutes = Math.min(minutes, 4);
+  // Classroom moves are quiet desk-side resets; longer sessions belong outside class
+  const requestedMinutes = minutes;
+  if (classroom) minutes = Math.min(minutes, 10);
 
   const health = healthPlan(user);
   const avoidIds = new Set(health.conditions.flatMap((c) => c.avoid.map((a) => a.id)));
@@ -353,11 +356,14 @@ function generateMission(user, ctx, recent) {
   const items = [];
   const usedIds = new Set();
   const fits = (sec) => used + sec + TRANSITION <= budget + 15;
+  // Longer sessions use bigger sets (fewer, fuller steps) rather than endless rounds
+  const volume = health.capIntensity ? 1 : minutes >= 40 ? 1.5 : minutes >= 25 ? 1.25 : 1;
+  const withVolume = (m, a) => (m.flex || volume === 1 ? a : m.unit === 'sec' ? Math.max(10, round5(a * volume)) : Math.max(1, Math.round(a * volume)));
   // Personal (learned) amounts, except in comeback missions which stay easy
-  const amt = (m) => personalAmount(user, m, li, { learn: !comeback && !health.capIntensity });
+  const amt = (m) => withVolume(m, personalAmount(user, m, li, { learn: !comeback && !health.capIntensity }));
   const add = (move, label) => {
     const amount = amt(move);
-    const item = makeItem(move, amount, label, move.amount[li]);
+    const item = makeItem(move, amount, label, withVolume(move, move.amount[li]));
     items.push(item);
     usedIds.add(move.id);
     used += item.estSec + TRANSITION;
@@ -386,7 +392,8 @@ function generateMission(user, ctx, recent) {
     mainSet.push(m);
   }
   // Seated moves are short: short seated missions stop at 2 rounds and give leftover time to the seated march
-  const maxRounds = adaptive && minutes < 15 ? 2 : 3;
+  // Longer sessions repeat the circuit more times instead of piling everything onto the walk
+  const maxRounds = adaptive && minutes < 15 ? 2 : minutes >= 25 ? 4 : 3;
   for (let round = 2; round <= maxRounds && mainSet.length; round++) {
     let added = 0;
     for (const m of mainSet) {
@@ -425,6 +432,9 @@ function generateMission(user, ctx, recent) {
     lowImpact,
     adaptive,
     healthLabels: health.active ? health.labels : [],
+    note: classroom && requestedMinutes > minutes
+      ? `Classroom missions are kept to ${minutes} minutes of quiet desk-side moves. Pick Room, Campus or Playground for a longer session.`
+      : null,
     items,
     maxXp: Math.round(items.reduce((s, it) => s + it.xp * 1.5, 0)) + 10 + (comeback ? 30 : 0),
     followUp,

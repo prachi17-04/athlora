@@ -65,9 +65,10 @@ function mountShell() {
     </div>
     <nav class="bottom-nav" aria-label="Main">
       <div class="inner">
-        ${NAV.map(([key, label, icon]) => key === 'move'
-          ? `<a href="#/${key}" data-nav="${key}" class="move-tab"><span class="bubble">${icon}</span>${label}</a>`
-          : `<a href="#/${key}" data-nav="${key}">${icon}${label}</a>`).join('')}
+        ${NAV.map(([key, label, icon]) => `
+          <a href="#/${key}" data-nav="${key}" class="${key === 'move' ? 'move-tab' : ''}" aria-label="${label}">
+            <span class="nav-pill">${icon}</span><span class="nav-label">${label}</span>
+          </a>`).join('')}
       </div>
     </nav>`;
 }

@@ -96,6 +96,7 @@ export async function render(el, app) {
           </div>
           ${m.items.some((it) => it.personalized) ? '<p class="tiny muted mt-8">🧠 Targets marked "for you" were learned from your own verified results.</p>' : ''}
           ${m.healthLabels?.length ? '<p class="tiny muted mt-8">🩺 Built from your health-safe plan. Go at your own pace and stop if anything hurts.</p>' : ''}
+          ${m.note ? `<p class="note mt-16">${esc(m.note)}</p>` : ''}
           ${m.followUp ? `<p class="note mt-16">After class: ${esc(m.followUp.text)}.</p>` : ''}
         </section>
         <button class="btn primary block" id="start">START</button>
