@@ -2,6 +2,8 @@
 // MediaPipe Pose Landmarker -> joint angles -> rep / hold counters.
 // Video never leaves the device.
 
+import { primeAudio, sayCount, ting, createFinalTicker, soundOn, setSound } from './sound.js';
+
 const VER = '0.10.14';
 const CDN = `https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@${VER}`;
 const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
@@ -564,10 +566,15 @@ export function openTracker(o) {
       <div class="controls">
         <button class="btn ghost" id="tcancel">Cancel</button>
         <button class="btn primary" id="tdone" disabled>Done</button>
-        <button class="btn ghost" id="tflip" aria-label="Switch camera">⇄</button>
+        <div class="row" style="gap:6px">
+          <button class="btn ghost" id="tsound" aria-label="Voice and sounds">${soundOn() ? '🔊' : '🔇'}</button>
+          <button class="btn ghost" id="tflip" aria-label="Switch camera">⇄</button>
+        </div>
       </div>`;
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
+    primeAudio(); // we're inside the tap that opened the tracker, so audio is allowed now
+    const finalTick = createFinalTicker();
 
     const video = overlay.querySelector('video');
     const canvas = overlay.querySelector('canvas');
@@ -610,6 +617,10 @@ export function openTracker(o) {
 
     overlay.querySelector('#tcancel').onclick = () => finish(true);
     $done.onclick = () => finish(false);
+    overlay.querySelector('#tsound').onclick = (e) => {
+      setSound(!soundOn());
+      e.currentTarget.textContent = soundOn() ? '🔊' : '🔇';
+    };
     overlay.querySelector('#tflip').onclick = async () => {
       facing = facing === 'user' ? 'environment' : 'user';
       try { await startCamera(); } catch { $s.textContent = 'Could not switch camera'; }
@@ -676,7 +687,8 @@ export function openTracker(o) {
       if (o.window) {
         const left = Math.max(0, o.window - elapsed);
         $t.textContent = `${Math.ceil(left)}s`;
-        if (left <= 0) { phase = 'ended'; $s.textContent = 'Time!'; setTimeout(() => finish(false), 500); return; }
+        finalTick(left);
+        if (left <= 0) { phase = 'ended'; ting(); $s.textContent = 'Time!'; setTimeout(() => finish(false), 700); return; }
       } else {
         $t.textContent = `${Math.floor(elapsed / 60)}:${String(Math.floor(elapsed % 60)).padStart(2, '0')}`;
       }
@@ -686,7 +698,13 @@ export function openTracker(o) {
       const P = (i) => ({ x: lm[i].x * W, y: lm[i].y * H, v: lm[i].visibility ?? 1 });
       const r = counter.update(P, dt, now);
       if (r.tracking) trackedFrames++;
-      if (r.rep) navigator.vibrate?.(25);
+      if (r.rep) {
+        navigator.vibrate?.(25);
+        // Counters only report a rep when it met the movement standard, so every spoken number is a correct rep
+        if (!isHold) sayCount(counter.count);
+      }
+      // Timed moves stay quiet, then tick through their last 5 seconds
+      if (isHold && o.target) finalTick(o.target - counter.held);
       $s.textContent = r.msg;
       $c.textContent = counter.count;
       const live = counter.formLast ?? counter.form?.score;
@@ -698,15 +716,17 @@ export function openTracker(o) {
 
       if (o.target && counter.count >= o.target) {
         phase = 'ended';
+        ting();
         $s.textContent = 'Target reached! Verified ✓';
-        setTimeout(() => finish(false), 900);
+        setTimeout(() => finish(false), 1100);
       }
       // Hold test with no target: end after position has been lost for 3s (plank) / 2s (balance)
       const grace = o.type === 'balance' ? 2000 : 3000;
       if (isHold && !o.target && phase === 'active' && counter.held >= 3 && now - counter.lastGood > grace) {
         phase = 'ended';
+        ting();
         $s.textContent = `Held for ${counter.count}s`;
-        setTimeout(() => finish(false), 700);
+        setTimeout(() => finish(false), 900);
       }
     }
 

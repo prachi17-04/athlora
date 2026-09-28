@@ -69,6 +69,52 @@ function buddyCard(b) {
     </section>`;
 }
 
+// ---------- Leaderboard: top 3 by XP, then "you" if lower, with today's rank movement ----------
+const ordinal = (n) => { const s = ['th', 'st', 'nd', 'rd'], v = n % 100; return n + (s[(v - 20) % 10] || s[v] || s[0]); };
+const MEDALS = ['🥇', '🥈', '🥉'];
+
+function moveBadge(move) {
+  if (move === 'new') return '<span class="lb-move new" title="First XP today">NEW</span>';
+  if (move > 0) return `<span class="lb-move up" title="Up ${move} today">▲ ${move}</span>`;
+  if (move < 0) return `<span class="lb-move down" title="Down ${-move} today">▼ ${-move}</span>`;
+  return '<span class="lb-move same" title="No change today">–</span>';
+}
+
+function lbRow(r) {
+  return `
+    <div class="lb-row ${r.me ? 'me' : ''}">
+      <span class="lb-rank ${r.rank <= 3 ? 'medal' : ''}">${r.rank <= 3 ? MEDALS[r.rank - 1] : ordinal(r.rank)}</span>
+      <span class="lb-name">${esc(r.name)}${r.me ? ' <span class="tag lime">You</span>' : ''}</span>
+      <span class="lb-xp">${r.xp.toLocaleString()} XP</span>
+      ${moveBadge(r.move)}
+    </div>`;
+}
+
+function leaderboardInner(lb) {
+  if (!lb) return '<p class="small muted mt-8">Leaderboard unavailable right now.</p>';
+  return `
+    <p class="tiny muted mt-8">${esc(lb.label)} · ranked by Fitness XP · arrows show today's moves</p>
+    <div class="mt-8">
+      ${lb.top.length ? lb.top.map(lbRow).join('') : '<p class="small muted">No one has earned XP yet. Complete a mission and take 1st place!</p>'}
+      ${lb.me ? `<div class="lb-gap">⋯</div>${lbRow(lb.me)}
+        <p class="tiny muted mt-8">You're ${ordinal(lb.me.rank)} of ${lb.total}. ${lb.top[2] ? `${(lb.top[2].xp - lb.me.xp + 1).toLocaleString()} XP more to reach the top 3.` : ''}</p>` : ''}
+      ${lb.unranked ? '<p class="small muted mt-8">Earn your first XP to join the leaderboard.</p>' : ''}
+    </div>`;
+}
+
+function leaderboardCard(lb) {
+  return `
+    <section class="card" id="lbCard">
+      <div class="row between wrap">
+        <h2>🏆 Leaderboard</h2>
+        ${lb?.canSwitch ? `<div class="chips" id="lbScope">
+          <button type="button" class="chip sm-chip ${lb.scope === 'community' ? 'on' : ''}" data-scope="community">Community</button>
+          <button type="button" class="chip sm-chip ${lb.scope === 'all' ? 'on' : ''}" data-scope="all">Everyone</button></div>` : ''}
+      </div>
+      <div id="lbBody">${leaderboardInner(lb)}</div>
+    </section>`;
+}
+
 // Daily streak motivation: "Let's go! You have a __-day streak going on"
 const MILESTONES = [3, 7, 14, 21, 30, 50, 75, 100, 150, 200, 365];
 const PUSHES = [
@@ -179,10 +225,11 @@ function comebackCard(stats) {
 
 export async function render(el, app) {
   const { store } = app;
-  const [stats, opps, buddy] = await Promise.all([
+  const [stats, opps, buddy, lb] = await Promise.all([
     app.refreshStats(),
     api('/opportunities').catch(() => null),
     api('/buddy').catch(() => null),
+    api('/leaderboard').catch(() => null),
   ]);
   const u = store.user;
   stats.userName = u.name.split(' ')[0];
@@ -202,6 +249,8 @@ export async function render(el, app) {
       ${comebackCard(stats)}
 
       ${consistencyPanel(stats)}
+
+      ${leaderboardCard(lb)}
 
       ${u.medical?.has ? `
         <section class="card health-card" id="healthPlanGo" style="cursor:pointer">
@@ -277,6 +326,15 @@ export async function render(el, app) {
   el.querySelector('#addTimetable')?.addEventListener('click', () => { store.scrollTo = 'timetable'; app.navigate('setup'); });
   el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('community'));
   el.querySelector('#studyGo').onclick = () => app.navigate('study');
+  el.querySelector('#lbScope')?.addEventListener('click', async (e) => {
+    const chip = e.target.closest('[data-scope]');
+    if (!chip || chip.classList.contains('on')) return;
+    el.querySelectorAll('#lbScope .chip').forEach((c) => c.classList.toggle('on', c === chip));
+    try {
+      const next = await api(`/leaderboard?scope=${chip.dataset.scope}`);
+      el.querySelector('#lbBody').innerHTML = leaderboardInner(next);
+    } catch (err) { toast(err.message, true); }
+  });
   el.querySelector('#healthPlanGo')?.addEventListener('click', () => app.navigate('setup'));
   el.querySelector('#streakGo')?.addEventListener('click', () => {
     store.missionRequest = { minutes: 3, environment: u.profile.environment || 'room' };

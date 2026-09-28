@@ -296,6 +296,41 @@ h1, h2, h3, p { margin: 0; }
 .streak-banner.on .streak-num { background: linear-gradient(160deg, #ffb547, #ff6b2c); color: #1a0d00; }
 .streak-banner.on .streak-num span { color: rgba(26,13,0,.75); }
 
+/* ---------- leaderboard ---------- */
+.lb-row { display: grid; grid-template-columns: 40px 1fr auto 52px; align-items: center; gap: 8px; padding: 10px 8px; border-radius: 12px; }
+.lb-row + .lb-row { border-top: 1px solid var(--line); }
+.lb-row.me { background: var(--accent-soft); border-top-color: transparent; }
+.lb-rank { text-align: center; font-weight: 800; color: var(--muted); font-size: 15px; font-variant-numeric: tabular-nums; }
+.lb-rank.medal { font-size: 22px; }
+.lb-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-xp { font-weight: 700; font-variant-numeric: tabular-nums; }
+.lb-move { font-size: 12px; font-weight: 800; text-align: right; }
+.lb-move.up { color: #4ade80; }
+.lb-move.down { color: var(--danger); }
+.lb-move.new { color: var(--accent); }
+.lb-move.same { color: var(--muted); }
+.lb-gap { text-align: center; color: var(--muted); letter-spacing: .3em; padding: 2px 0; }
+.chip.sm-chip { padding: 5px 11px; font-size: 12.5px; }
+
+/* ---------- exercise demos (uniform pictures, 24 s previews) ---------- */
+.demo-still { display: block; width: 100%; height: 100%; }
+.demo-badge {
+  width: 112px; height: 112px; border-radius: 50%; margin: 0 auto; padding: 6px; display: block;
+  background: var(--card-2); border: 2px solid rgba(63,180,255,.45); box-shadow: 0 0 0 5px rgba(63,180,255,.08);
+}
+.thumb { position: relative; width: 48px; height: 48px; flex: none; padding: 3px; border-radius: 12px; background: var(--bg); border: 1px solid var(--line); }
+.thumb-n { position: absolute; top: -6px; left: -6px; width: 20px; height: 20px; border-radius: 50%; background: var(--card); border: 1px solid var(--line); font-size: 11px; font-weight: 700; display: grid; place-items: center; color: var(--muted); }
+.move-item.done .thumb-n { background: var(--accent); color: var(--accent-ink); }
+.feel-legend { display: flex; flex-wrap: wrap; gap: 8px; }
+.center-legend { justify-content: center; }
+.feel-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.feel-tag i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; box-shadow: 0 0 0 3px rgba(255,120,60,.18); }
+.demo-overlay { position: fixed; inset: 0; z-index: 60; background: rgba(4,10,20,.82); display: grid; place-items: center; padding: calc(12px + var(--safe-t)) 12px calc(12px + var(--safe-b)); overflow-y: auto; }
+.demo-sheet { width: 100%; max-width: 460px; background: var(--card); border: 1px solid var(--line); border-radius: 22px; padding: 18px; }
+.demo-stage { position: relative; margin-top: 12px; background: var(--card-2); border-radius: 18px; aspect-ratio: 1; }
+.demo-stage svg { width: 100%; height: 100%; display: block; }
+.demo-rep { position: absolute; top: 10px; right: 12px; font-weight: 700; font-size: 13px; color: var(--muted); }
+
 /* ---------- health-safe plan ---------- */
 .health-card { border-color: rgba(63, 180, 255, .45); background: radial-gradient(120% 140% at 100% 0%, rgba(63,180,255,0.14), transparent 55%), var(--card); }
 .health-card details summary { cursor: pointer; list-style: revert; }

@@ -1,3 +1,5 @@
+import { primeAudio, ting, createFinalTicker } from './sound.js';
+
 // Phone-sensor verification for walks and stairs (no wearable needed).
 // Counts steps from the accelerometer: a smoothed acceleration peak above a moving baseline = one step.
 
@@ -70,6 +72,8 @@ export function openStepTracker(o) {
       </div>`;
     document.body.appendChild(overlay);
     document.body.style.overflow = 'hidden';
+    primeAudio();
+    const finalTick = createFinalTicker();
 
     const $ = (s) => overlay.querySelector(s);
     const det = createStepDetector();
@@ -107,7 +111,8 @@ export function openStepTracker(o) {
       else if (det.steps === 0) $('#st').textContent = 'Start walking…';
       else if (cad && cad < 70) $('#st').textContent = 'Pick up the pace a little!';
       else $('#st').textContent = 'Tracking your steps ✓';
-      if (progress() >= 1) { $('#st').textContent = 'Goal reached! Verified ✓'; finish(false); }
+      if (o.unit === 'sec' && activeMs > 0) finalTick(o.target - activeMs / 1000);
+      if (progress() >= 1) { ting(); $('#st').textContent = 'Goal reached! Verified ✓'; finish(false); }
     }
 
     async function finish(cancelled) {

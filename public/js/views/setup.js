@@ -4,6 +4,7 @@ import {
   ENV_OPTIONS, EQUIP_OPTIONS, GOAL_OPTIONS, LEVEL_OPTIONS, MEDICAL_OPTIONS, ICONS,
 } from '../ui.js';
 import { openTracker } from '../tracker.js';
+import { stillSVG, feelLegend, openPreview, PREVIEW_SEC, TEST_DEMO } from '../demo.js';
 
 // Each test maps to a Fit India Fitness Protocol component (shown as `fitIndia`)
 const TESTS = [
@@ -298,6 +299,11 @@ export async function render(el, app) {
         <div class="progress-dots">${tests.map((_, j) => `<span class="${j < assess.i ? 'on' : j === assess.i ? 'cur' : ''}"></span>`).join('')}</div>
         <div class="row between"><span class="upper">AI Fitness Assessment</span><span class="small muted">Test ${assess.i + 1} of ${tests.length}</span></div>
         <section class="card center" style="padding:26px 18px">
+          ${TEST_DEMO[t.key] ? `
+            <button class="demo-badge" id="previewBadge" aria-label="Preview ${esc(t.title)}">${stillSVG(TEST_DEMO[t.key])}</button>
+            <div class="feel-legend center-legend mt-8">${feelLegend(TEST_DEMO[t.key])}</div>
+            <button class="btn sm ghost mt-8" id="previewBtn">▶ Preview (${PREVIEW_SEC} s)</button>
+            <div class="mt-16"></div>` : ''}
           <div class="tag lime">Fit India · ${esc(t.fitIndia)}</div>
           <div class="runner-name mt-8">${esc(t.title)}</div>
           <div class="runner-target mt-16">${t.window ? `${t.window}s` : t.target ? `max ${t.target}s` : 'Max hold'}</div>
@@ -327,6 +333,12 @@ export async function render(el, app) {
       advance();
     };
     el.querySelector('#skip').onclick = advance;
+    const preview = async () => {
+      const go = await openPreview(TEST_DEMO[t.key], { title: esc(t.title), cue: esc(t.how), startLabel: 'Start test with camera' });
+      if (go === 'start') el.querySelector('#cam')?.click();
+    };
+    el.querySelector('#previewBtn')?.addEventListener('click', preview);
+    el.querySelector('#previewBadge')?.addEventListener('click', preview);
     el.querySelector('#quit').onclick = () => { assess = null; draw(); };
   }
 

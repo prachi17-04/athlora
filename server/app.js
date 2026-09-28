@@ -54,6 +54,16 @@ function localNow(offset, ts = Date.now()) {
   return { day: d.getUTCDay(), min: d.getUTCHours() * 60 + d.getUTCMinutes() };
 }
 
+// Adds XP and logs it with a timestamp, so rank changes ("moved up today") can be computed
+function addXp(u, amount) {
+  if (!amount) return;
+  u.xp = (u.xp || 0) + amount;
+  u.xpLog = [...(u.xpLog || []), { at: Date.now(), xp: amount }].slice(-300);
+}
+// XP a student had at a moment in the past (log covers recent awards; older XP counts as already earned)
+function xpAt(u, ts) {
+  return (u.xp || 0) - (u.xpLog || []).filter((e) => e.at >= ts).reduce((s, e) => s + e.xp, 0);
+}
 // A student's buddy list; upgrades records from the old single-buddy format in place
 function buddiesOf(u) {
   if (!Array.isArray(u.buddies)) u.buddies = u.buddy ? [u.buddy] : [];
@@ -305,6 +315,58 @@ function createApp(kv) {
     res.json({ user: publicUser(u) });
   }));
 
+  // =============== LEADERBOARD (by XP, with today's rank movement) ===============
+  const lbCache = new Map(); // scope -> { at, users }; avoids reloading every student on each dashboard view
+  async function cachedUsers(key, loader) {
+    const hit = lbCache.get(key);
+    if (hit && Date.now() - hit.at < 30000) return hit.users;
+    const users = await loader();
+    lbCache.set(key, { at: Date.now(), users });
+    return users;
+  }
+  // Privacy-friendly display name: first name + last initial
+  const displayName = (u) => {
+    const parts = String(u.name || '').trim().split(/\s+/).filter(Boolean);
+    return parts.length > 1 ? `${parts[0]} ${parts[parts.length - 1][0].toUpperCase()}.` : parts[0] || 'Student';
+  };
+
+  api.get('/leaderboard', auth, h(async (req, res) => {
+    const u = req.user;
+    const inCommunity = Boolean(campusKey(u.campus));
+    const scope = req.query.scope === 'all' || !inCommunity ? 'all' : 'community';
+    let users = scope === 'community'
+      ? await cachedUsers(`c:${sha(campusKey(u.campus))}`, async () => {
+        const prefix = K.campusPrefix(u.campus);
+        const ids = (await kv.list(prefix)).map((k) => k.slice(prefix.length));
+        return (await Promise.all(ids.map((id) => kv.get(K.user(id))))).filter((m) => m && campusKey(m.campus) === campusKey(u.campus));
+      })
+      : await cachedUsers('all', async () => {
+        const keys = await kv.list('user/');
+        return (await Promise.all(keys.map((k) => kv.get(k)))).filter(Boolean);
+      });
+    // Always use the requesting student's freshest record
+    users = [...users.filter((x) => x.id !== u.id && x.onboarded), u];
+
+    const offset = tzOffset(req);
+    const todayStart = Date.parse(dayKey(Date.now(), offset) + 'T00:00:00Z') + offset * 60000;
+    const rows = users.map((x) => ({ id: x.id, name: displayName(x), xp: x.xp || 0, prev: xpAt(x, todayStart), createdAt: x.createdAt || 0 }));
+    const ranked = (k) => rows.filter((r) => r[k] > 0).sort((a, b) => b[k] - a[k] || a.createdAt - b.createdAt);
+    const current = ranked('xp');
+    const prevRank = new Map(ranked('prev').map((r, i) => [r.id, i + 1]));
+    // move > 0 = climbed that many places since the start of today, < 0 = dropped, 'new' = first XP today
+    const view = (r, i) => ({ rank: i + 1, name: r.name, xp: r.xp, me: r.id === u.id, move: prevRank.has(r.id) ? prevRank.get(r.id) - (i + 1) : 'new' });
+    const myIdx = current.findIndex((r) => r.id === u.id);
+    res.json({
+      scope,
+      label: scope === 'community' ? u.campus : 'All ATHLORA students',
+      canSwitch: inCommunity,
+      total: current.length,
+      top: current.slice(0, 3).map(view),
+      me: myIdx >= 3 ? view(current[myIdx], myIdx) : null,
+      unranked: myIdx === -1,
+    });
+  }));
+
   // =============== HEALTH-SAFE PLAN ===============
   // What a student with a reported condition should (and shouldn't) do. General guidance, not a diagnosis.
   api.get('/health-plan', auth, (req, res) => res.json(engine.healthPlan(req.user)));
@@ -360,7 +422,7 @@ function createApp(kv) {
       formAvg: score.formAvg, steps,
       completedAt: Date.now(),
     });
-    u.xp = (u.xp || 0) + score.xp;
+    addXp(u, score.xp);
     await saveUser(u);
     res.json({ reward: { ...score, steps }, adaptations, stats: computeStats(u, offset) });
   }));
@@ -395,7 +457,7 @@ function createApp(kv) {
       xp += bonus;
       breakdown.push({ label: `Improved ${growth.fgi}% since last test`, xp: bonus });
     }
-    u.xp = (u.xp || 0) + xp;
+    addXp(u, xp);
     // A fresh assessment is the best signal, so it always resets the level (students can still override it later).
     // Learned targets are relative to the level, so a new level starts learning afresh.
     const recalibrated = u.profile.fitnessLevel !== level && Object.keys(u.adaptiveTargets || {}).length > 0;
@@ -697,7 +759,7 @@ function createApp(kv) {
       if (session.goodPct >= 70) { xp += 5; breakdown.push({ label: 'Good posture 70%+ of the time', xp: 5 }); }
     }
     u.studySessions = [...(u.studySessions || []), session].slice(-200);
-    u.xp = (u.xp || 0) + xp;
+    addXp(u, xp);
     await saveUser(u);
     res.json({ reward: { xp, breakdown }, stats: computeStats(u, tzOffset(req)) });
   }));
@@ -807,7 +869,7 @@ function createApp(kv) {
       id: uid(), title: `CLASS BREAK · ${b.title}`, minutes: b.minutes, environment: 'classroom', comeback: false,
       classBreak: true, xp, activeMin, verifiedCount: 0, doneCount: b.moves.length, formAvg: null, steps: 0, completedAt: Date.now(),
     }];
-    u.xp = (u.xp || 0) + xp;
+    addXp(u, xp);
     await kv.set(`breakdone/${b.code}/${u.id}`, { at: Date.now() });
     await saveUser(u);
     res.json({ reward: { xp, breakdown, activeMin }, stats: computeStats(u, offset) });

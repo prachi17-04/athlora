@@ -2,6 +2,8 @@ import { api } from '../api.js';
 import { esc, toast, chips, bindChips, chipValue, fmtTarget, TIME_OPTIONS, ENV_OPTIONS, EQUIP_OPTIONS, ICONS } from '../ui.js';
 import { openTracker } from '../tracker.js';
 import { openStepTracker, motionSupported } from '../sensors.js';
+import { hasDemo, stillSVG, feelLegend, openPreview, PREVIEW_SEC } from '../demo.js';
+import { primeAudio, tick, ting } from '../sound.js';
 
 // Survives tab switches so a mission in progress isn't lost
 let current = null; // { mission, params, results: [], index: -1, reward? }
@@ -80,7 +82,9 @@ export async function render(el, app) {
           <div class="move-list">
             ${m.items.map((it, i) => `
               <div class="move-item">
-                <span class="n">${i + 1}</span>
+                ${hasDemo(it.moveId)
+                  ? `<button class="thumb" data-preview="${i}" aria-label="Preview ${esc(it.name)}">${stillSVG(it.moveId)}<span class="thumb-n">${i + 1}</span></button>`
+                  : `<span class="n">${i + 1}</span>`}
                 <div class="t"><b>${esc(it.name)}</b><span class="small muted">${fmtTarget(it)}${it.personalized
                   ? ` · <span class="accent">🧠 ${it.target > it.baseTarget ? '+' : ''}${it.target - it.baseTarget} for you</span>` : ''}</span></div>
                 ${it.cv ? `<span class="cam" title="Camera-verifiable">${ICONS.camera}</span>` : it.sensor ? '<span class="cam" title="Phone-sensor verifiable">👟</span>' : ''}
@@ -101,6 +105,10 @@ export async function render(el, app) {
         </div>
       </div>`;
     el.querySelector('#start').onclick = () => { current.index = 0; draw(); };
+    el.querySelectorAll('[data-preview]').forEach((b) => b.addEventListener('click', () => {
+      const it = m.items[Number(b.dataset.preview)];
+      openPreview(it.moveId, { title: esc(it.name), cue: esc(it.cue), startLabel: 'Close' });
+    }));
     el.querySelector('#shuffle').onclick = () => generate(current.params);
     el.querySelector('#change').onclick = () => { current = null; draw(); };
   }
@@ -129,8 +137,12 @@ export async function render(el, app) {
           <span class="upper">${esc(m.title)}</span>
           <span class="small muted">Move ${i + 1} of ${m.items.length}</span>
         </div>
-        <section class="card center" style="padding:28px 18px">
-          <div class="runner-name">${esc(it.name)}</div>
+        <section class="card center" style="padding:22px 18px 28px">
+          ${hasDemo(it.moveId) ? `
+            <button class="demo-badge" id="previewBadge" aria-label="Preview ${esc(it.name)}">${stillSVG(it.moveId)}</button>
+            <div class="feel-legend center-legend mt-8">${feelLegend(it.moveId)}</div>
+            <button class="btn sm ghost mt-8" id="previewBtn">▶ Preview (${PREVIEW_SEC} s)</button>` : ''}
+          <div class="runner-name mt-16">${esc(it.name)}</div>
           <div class="runner-target mt-16" id="big">${timed ? fmtClock(it.target) : it.target}</div>
           <div class="muted">${timed ? '' : it.unit === 'sec' ? 'seconds' : it.unit}</div>
           <p class="muted mt-16">${esc(it.cue)}</p>
@@ -155,6 +167,12 @@ export async function render(el, app) {
 
     el.querySelector('#manual').onclick = () => next({ done: true, verified: false, achieved: it.target });
     el.querySelector('#skip').onclick = () => next({ done: false });
+    const preview = async () => {
+      const go = await openPreview(it.moveId, { title: esc(it.name), cue: esc(it.cue), startLabel: it.cv ? 'Start with camera' : 'Got it' });
+      if (go === 'start' && it.cv) el.querySelector('#verify')?.click();
+    };
+    el.querySelector('#previewBtn')?.addEventListener('click', preview);
+    el.querySelector('#previewBadge')?.addEventListener('click', preview);
     el.querySelector('#end').onclick = () => {
       if (current.results.some((r) => r?.done)) complete();
       else { current = null; draw(); }
@@ -183,6 +201,7 @@ export async function render(el, app) {
     el.querySelector('#timerBtn')?.addEventListener('click', (e) => {
       const btn = e.currentTarget;
       if (timer) { clearInterval(timer); timer = null; btn.textContent = 'Resume timer'; return; }
+      primeAudio();
       let left = Number(el.querySelector('#big').dataset.left || it.target);
       btn.textContent = 'Pause';
       timer = setInterval(() => {
@@ -191,11 +210,14 @@ export async function render(el, app) {
         if (!big) return clearInterval(timer);
         big.dataset.left = left;
         big.textContent = fmtClock(left);
+        // Silent countdown; tick through the last 5 seconds only
+        if (left >= 1 && left <= 5) tick();
         if (left <= 0) {
           clearInterval(timer);
           timer = null;
+          ting();
           navigator.vibrate?.([80, 60, 80]);
-          next({ done: true, verified: false, achieved: it.target });
+          setTimeout(() => next({ done: true, verified: false, achieved: it.target }), 900);
         }
       }, 1000);
     });
