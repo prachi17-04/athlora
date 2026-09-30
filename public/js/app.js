@@ -68,7 +68,7 @@ function mountShell() {
       </header>
       ${store.user?.demo ? `
         <div class="demo-banner">
-          <span>👀 <b>Demo profile</b> · sample data${store.user.demoInfo ? ` · PE dashboard PIN <b>${esc(store.user.demoInfo.pin)}</b>` : ''}</span>
+          <span>👀 <b>Demo Profile</b> · shared by everyone trying ATHLORA, so XP you earn here stays</span>
           <button class="link" id="exitDemo">Exit</button>
         </div>` : ''}
       <main id="view"></main>

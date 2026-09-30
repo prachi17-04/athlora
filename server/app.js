@@ -42,7 +42,6 @@ function publicUser(u) {
     id: u.id, name: u.name, email: u.email, age: u.age ?? null,
     medical: u.medical ?? null, sports: u.sports ?? null,
     onboarded: Boolean(u.onboarded), campus: u.campus || '', demo: Boolean(u.demo),
-    ...(u.demo ? { demoInfo: { community: 'ATHLORA Demo College', pin: 'demo2026' } } : {}),
     profile: u.profile, createdAt: u.createdAt,
     timetable: u.timetable || { dayStart: '08:00', dayEnd: '18:00', classes: [] },
     buddyCount: (u.buddies || (u.buddy ? [u.buddy] : [])).length,
@@ -358,10 +357,9 @@ function createApp(kv) {
         return (await Promise.all(keys.map((k) => kv.get(k)))).filter(Boolean);
       });
     // Always use the requesting student's freshest record.
-    // Demo profiles (and their sample classmates) never mix with real students, and each demo
-    // visitor sees only the sample classmates (not other visitors' copies), so it always looks the same.
-    const isDemo = (x) => Boolean(x.demo || x.demoPeer);
-    users = [...users.filter((x) => x.id !== u.id && x.onboarded && (u.demo ? x.demoPeer : !isDemo(x))), u];
+    // The shared Demo Profile and its 9 classmates appear in everyone's "Everyone" list;
+    // old per-visitor demo copies (from earlier versions) never do.
+    users = [...users.filter((x) => x.id !== u.id && x.onboarded && !(x.demo && !x.demoMain)), u];
 
     const offset = tzOffset(req);
     const todayStart = Date.parse(dayKey(Date.now(), offset) + 'T00:00:00Z') + offset * 60000;
@@ -432,8 +430,12 @@ function createApp(kv) {
       minutes: req.body.minutes,
       environment: req.body.environment || u.profile.environment,
       equipment: req.body.equipment || u.profile.equipment,
+      seated: typeof req.body.seated === 'boolean' ? req.body.seated : undefined,
+      recentMoves: u.recentMoves || [],
     }, { comeback: stats.comeback, inactiveDays: stats.inactiveDays });
     const record = { id: uid(), createdAt: Date.now(), status: 'pending', ...mission };
+    // Remember the last few missions' exercises, so the next one mixes things up
+    u.recentMoves = [[...new Set(mission.items.map((it) => it.moveId))], ...(u.recentMoves || [])].slice(0, 3);
     // Keep only recent missions on the record
     u.missions = [...(u.missions || []).filter((m) => Date.now() - m.createdAt < DAY_MS), record].slice(-10);
     await saveUser(u);

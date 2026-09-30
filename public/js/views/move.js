@@ -50,8 +50,11 @@ export async function render(el, app) {
           <div class="mt-8">${chips('time', TIME_OPTIONS, '5')}</div>
           <p class="upper mt-16">Where are you?</p>
           <div class="mt-8">${chips('env', ENV_OPTIONS, p.environment || 'room')}</div>
+          <p class="upper mt-16">How do you want to move?</p>
+          <div class="mt-8">${chips('pose', [['standing', 'Standing'], ['seated', '🪑 Sitting only']], p.adaptive ? 'seated' : 'standing')}</div>
           <p class="upper mt-16">Equipment nearby <span style="text-transform:none;letter-spacing:0">(optional)</span></p>
           <div class="mt-8">${chips('equip', EQUIP_OPTIONS, p.equipment || [], { multi: true })}</div>
+          <p class="tiny muted mt-8">Pick Stairs and your mission includes a short stair climb.</p>
           <button class="btn primary block mt-16" id="gen">Generate Move Mission</button>
         </section>
         <p class="small muted center">Tip: moves with ${ICONS.camera} can be verified by your camera for 1.5× XP.</p>
@@ -61,6 +64,7 @@ export async function render(el, app) {
       minutes: Number(chipValue(el, 'time')),
       environment: chipValue(el, 'env'),
       equipment: chipValue(el, 'equip'),
+      seated: chipValue(el, 'pose') === 'seated',
     });
   }
 

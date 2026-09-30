@@ -79,7 +79,7 @@ export function startOnboarding(root, { user, onDone }) {
             <button class="btn primary block" id="start">Get started</button>
             <button class="btn ghost block" id="demo">👀 Try the demo</button>
             <p class="muted small">Already joined? Use the same email and we'll sign you back in.<br/>
-              <span class="tiny">The demo opens a ready-made student profile with sample data, with no sign-up.</span></p>
+              <span class="tiny">The demo opens a ready-made, fully working profile, with no sign-up.</span></p>
           </div>
         </div>`;
       root.querySelector('#start').onclick = () => go('name');

@@ -1,9 +1,9 @@
 // "Try demo" profiles for judges and visitors.
-// Each click creates a fresh copy of the same demo student with ~2 weeks of history (made by running
-// the real mission engine and scoring with a fixed seed), in a separate "ATHLORA Demo College"
-// community with sample classmates. Every copy has identical content; dates are relative to the day
-// it's opened, so it looks the same months later. Visitors can use it normally (missions add XP)
-// without affecting anyone else. Demo data never mixes with real students; copies are deleted after 2 days.
+// One shared "Demo Profile" with ~2 weeks of starting history (made by running the real mission
+// engine and scoring), in the "ATHLORA Demo College" community with 9 sample classmates.
+// It's fully usable and persistent: XP a visitor earns stays for the next visitor. If it sits unused,
+// its history slides forward so the streak is alive whenever it's opened.
+// The Demo Profile and classmates also appear in every student's "Everyone" leaderboard.
 const crypto = require('crypto');
 
 const DAY = 86400000;
@@ -95,7 +95,7 @@ module.exports = function demoSeeder({ kv, engine, K, sha, campusKey, dayKey, hm
       { id: uid(), day: 0, start: '14:00', end: '15:30', title: 'Lab' },
     ]);
     const u = {
-      id: uid(), name: 'Demo Student', email: `demo-${crypto.randomBytes(4).toString('hex')}@demo.athlora.app`, demo: true,
+      id: uid(), name: 'Demo Profile', email: `demo-${crypto.randomBytes(4).toString('hex')}@demo.athlora.app`, demo: true, demoMain: true,
       createdAt: now - 16 * DAY, onboarded: true, age: 19,
       medical: { has: false, conditions: [], notes: '' }, sports: { plays: true, list: ['Cricket'] },
       campus: COMMUNITY, xp: 0, xpLog: [], missions: [], activities: [], assessments: [], studySessions: [],
@@ -221,16 +221,47 @@ module.exports = function demoSeeder({ kv, engine, K, sha, campusKey, dayKey, hm
     }
   }
 
+  // Moves every timestamp in the profile forward by `ms` (whole days, so local times stay the same)
+  const TIME_KEYS = new Set(['at', 'createdAt', 'completedAt', 'since', 'joinedAt', 'startedAt', 'endedAt', 'updatedAt', 'issuedAt']);
+  function shiftTimes(obj, ms) {
+    if (Array.isArray(obj)) { obj.forEach((x) => shiftTimes(x, ms)); return; }
+    if (!obj || typeof obj !== 'object') return;
+    for (const [k, v] of Object.entries(obj)) {
+      if (TIME_KEYS.has(k) && typeof v === 'number' && v > 1e12) obj[k] = v + ms;
+      else if (v && typeof v === 'object') shiftTimes(v, ms);
+    }
+  }
+
+  // If nobody has used the demo for a while, slide its whole history forward so the last
+  // active day was yesterday: XP, badges and everything visitors earned stay, and the
+  // streak is still alive (today open) whenever it's opened, even months later.
+  function keepCurrent(u, offset) {
+    const last = Math.max(0, ...(u.activities || []).map((a) => a.completedAt));
+    if (!last) return false;
+    const lag = Math.round((Date.parse(dayKey(Date.now(), offset)) - Date.parse(dayKey(last, offset))) / DAY);
+    if (lag < 2) return false;
+    shiftTimes(u, (lag - 1) * DAY);
+    u.missions = []; // unfinished missions from before are dropped
+    return true;
+  }
+
   return {
     COMMUNITY, PIN,
+    // Everyone who taps "Try the demo" opens the same shared Demo Profile. What one visitor
+    // earns (XP, streak, badges) is still there for the next one.
     async createDemo(offset) {
-      await cleanup().catch(() => {});
+      await cleanup().catch(() => {}); // removes per-visitor copies made by older versions
       const peers = await ensurePeers(offset);
-      const u = buildDemoUser(offset, peers);
+      const ref = await kv.get('demo/profile');
+      let u = ref && (await kv.get(K.user(ref.id)));
+      if (!u) {
+        u = buildDemoUser(offset, peers);
+        await kv.set('demo/profile', { id: u.id });
+      } else if (!keepCurrent(u, offset)) {
+        return u;
+      }
       await kv.set(K.user(u.id), u);
-      // Not listed as a community member: visitors never see each other's copies, so the
-      // community, leaderboard and PE dashboard look the same for every judge.
-      await kv.set(`demoindex/${u.id}`, { createdAt: Date.now() });
+      await kv.set(K.campusPrefix(COMMUNITY) + u.id, { joinedAt: u.createdAt });
       return u;
     },
   };

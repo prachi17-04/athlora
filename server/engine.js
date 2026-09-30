@@ -18,8 +18,9 @@ const MOVES = [
     env: ['campus', 'hostel', 'playground'], cue: 'Walk fast enough that talking feels slightly harder.' },
   { id: 'march', name: 'March in place', cat: 'endurance', unit: 'sec', amount: [60, 60, 60], secPer: 1, flex: true, sensor: 'steps', cv: 'active',
     env: ['room', 'hostel'], cue: 'Lift knees to hip height, swing your arms.' },
-  { id: 'stairs', name: 'Climb stairs', cat: 'endurance', unit: 'floors', amount: [2, 3, 4], secPer: 30, equip: 'stairs', sensor: 'steps',
-    env: ['hostel', 'campus'], cue: 'Up at a steady pace, walk down carefully.' },
+  // Short timed stair climb: only when the student says stairs are nearby
+  { id: 'stairs', name: 'Climb stairs', cat: 'endurance', unit: 'sec', amount: [30, 40, 60], secPer: 1, equip: 'stairs', sensor: 'steps',
+    env: ['room', 'hostel', 'campus', 'playground'], cue: 'Up at a steady pace, walk down carefully. Hold the rail.' },
   { id: 'squats', name: 'Squats', cat: 'strength', unit: 'reps', amount: [10, 15, 20], secPer: 3, cv: 'squat',
     env: ACTIVE, cue: 'Feet shoulder-width, hips back, thighs toward parallel.' },
   { id: 'chair_squats', name: 'Chair sit-to-stand', cat: 'strength', unit: 'reps', amount: [8, 12, 15], secPer: 3, cv: 'squat', equip: 'chair',
@@ -338,7 +339,11 @@ function generateMission(user, ctx, recent) {
   const li = comeback || health.capIntensity ? 0 : levelIndex(user);
   const goal = GOALS.includes(user.profile?.goal) ? user.profile.goal : 'general';
   const lowImpact = health.active;
-  const adaptive = Boolean(user.profile?.adaptive);
+  // Seated can be chosen per mission ("Sitting only"); otherwise the profile's mode applies
+  const adaptive = typeof ctx.seated === 'boolean' ? ctx.seated : Boolean(user.profile?.adaptive);
+  // Exercises from the last few missions are picked less often, so repeat missions feel different
+  const recentMoves = Array.isArray(ctx.recentMoves) ? ctx.recentMoves : [];
+  const freshness = (m) => (recentMoves[0]?.includes(m.id) ? 0.15 : recentMoves.slice(1).some((r) => r?.includes(m.id)) ? 0.5 : 1);
 
   // Adaptive (seated) mode: only chair-friendly moves, in any environment.
   // Health-safe: moves ruled out by any reported condition are never picked.
@@ -381,8 +386,14 @@ function generateMission(user, ctx, recent) {
   // 3. Main block: a few distinct moves weighted toward the student's goal,
   //    repeated in rounds when there is time (a focused mission beats a long list)
   const maxMain = minutes <= 3 ? 3 : minutes <= 5 ? 4 : minutes <= 12 ? 5 : 6;
-  const weight = (m) => (goal !== 'general' && m.cat === goal ? 3 : 1) * (m.cv ? 1.5 : 1);
+  const weight = (m) => (goal !== 'general' && m.cat === goal ? 3 : 1) * (m.cv ? 1.5 : 1) * freshness(m);
   const mainSet = [];
+  // Stairs nearby: always include a short stair climb
+  const stairs = !adaptive && equipment.includes('stairs') && pool.find((m) => m.id === 'stairs');
+  if (stairs && fits(estSeconds(stairs, amt(stairs)) + reserve)) {
+    add(stairs);
+    mainSet.push(stairs);
+  }
   for (let guard = 0; guard < 40 && mainSet.length < maxMain; guard++) {
     const candidates = pool.filter((m) => !usedIds.has(m.id) && !m.finisher && !m.flex &&
       fits(estSeconds(m, amt(m)) + reserve));

@@ -53,7 +53,7 @@ export function openStepTracker(o) {
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.className = 'tracker steps-tracker';
-    const goal = o.unit === 'floors' ? `${o.target} floors (~${o.target * STEPS_PER_FLOOR} steps)` : `${Math.round(o.target / 60 * 10) / 10} min of walking`;
+    const goal = o.unit === 'floors' ? `${o.target} floors (~${o.target * STEPS_PER_FLOOR} steps)` : o.target < 90 ? `${o.target} s of steady stepping` : `${Math.round(o.target / 60 * 10) / 10} min of walking`;
     overlay.innerHTML = `
       <div class="steps-body">
         <div class="upper" style="color:#fff">${o.title} · sensor check</div>
