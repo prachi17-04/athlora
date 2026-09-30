@@ -48,6 +48,7 @@ export const app = {
     session.clear();
     store.user = null;
     store.stats = null;
+    lastXp = null;
     location.hash = '';
     boot();
   },
@@ -93,7 +94,21 @@ export function updateLevelTag() {
   el.querySelector('#lvlText').innerHTML = `<b>LVL ${s.level}</b> · ${left.toLocaleString()} XP to go ›`;
   el.classList.toggle('almost', pct >= 80);
   el.setAttribute('aria-label', `Level ${s.level}, ${s.xp} XP. ${left} XP to level ${s.level + 1}. Tap to see your XP history.`);
+  // Newly earned XP pops up from the pill, so the gain is visible right away
+  if (lastXp !== null && s.xp > lastXp) {
+    const pop = document.createElement('span');
+    pop.className = 'xp-pop';
+    pop.textContent = `+${(s.xp - lastXp).toLocaleString()} XP`;
+    const r = el.getBoundingClientRect();
+    pop.style.top = `${r.bottom + 4}px`;
+    pop.style.right = `${Math.max(8, window.innerWidth - r.right)}px`;
+    document.body.appendChild(pop);
+    el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+    setTimeout(() => pop.remove(), 2200);
+  }
+  lastXp = s.xp;
 }
+let lastXp = null;
 
 async function route() {
   if (!document.getElementById('view')) return;

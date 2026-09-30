@@ -1,7 +1,9 @@
 // "Try demo" profiles for judges and visitors.
-// Each click creates a fresh demo student with ~2 weeks of realistic history (made by running the
-// real mission engine and scoring), in a separate "ATHLORA Demo College" community with sample
-// classmates. Demo data never mixes with real students, and demo profiles are deleted after 2 days.
+// Each click creates a fresh copy of the same demo student with ~2 weeks of history (made by running
+// the real mission engine and scoring with a fixed seed), in a separate "ATHLORA Demo College"
+// community with sample classmates. Every copy has identical content; dates are relative to the day
+// it's opened, so it looks the same months later. Visitors can use it normally (missions add XP)
+// without affecting anyone else. Demo data never mixes with real students; copies are deleted after 2 days.
 const crypto = require('crypto');
 
 const DAY = 86400000;
@@ -69,13 +71,28 @@ module.exports = function demoSeeder({ kv, engine, K, sha, campusKey, dayKey, hm
     });
   }
 
+  // The demo is identical on every click (same missions, XP, scores, badges); only the dates
+  // move with the day it's opened, so the history always looks recent and the streak is alive.
   function buildDemoUser(offset, peers) {
-    const rand = rng(Date.now());
+    const rand = rng(20260930);
+    const realRandom = Math.random;
+    Math.random = rand; // the mission engine shuffles with Math.random: make it repeatable while seeding
+    try {
+      return seedDemoUser(offset, peers, rand);
+    } finally {
+      Math.random = realRandom;
+    }
+  }
+
+  function seedDemoUser(offset, peers, rand) {
     const now = Date.now();
     const classes = [1, 2, 3, 4, 5, 6].flatMap((day) => [
       { id: uid(), day, start: '09:00', end: '10:00', title: 'Physics' },
       { id: uid(), day, start: '10:15', end: '11:45', title: 'Mathematics' },
       { id: uid(), day, start: '14:00', end: '15:00', title: 'English' },
+    ]).concat([
+      { id: uid(), day: 0, start: '10:00', end: '11:00', title: 'Study group' },
+      { id: uid(), day: 0, start: '14:00', end: '15:30', title: 'Lab' },
     ]);
     const u = {
       id: uid(), name: 'Demo Student', email: `demo-${crypto.randomBytes(4).toString('hex')}@demo.athlora.app`, demo: true,
@@ -130,58 +147,58 @@ module.exports = function demoSeeder({ kv, engine, K, sha, campusKey, dayKey, hm
     };
   }
 
-  // Sample classmates: created once, then topped up with fresh "today" activity each day
+  // One sample classmate, always built from the same fixed values with dates relative to today.
+  // Some of them "moved today" (so buddies show ✓ and the leaderboard shows ▲/▼).
+  function buildPeer(i, offset) {
+    const [name, baseXp] = PEERS[i];
+    const id = `demo-peer-${i + 1}`;
+    const rand = rng(i + 7);
+    const p = {
+      id, name, email: `${id}@demo.athlora.app`, demoPeer: true, onboarded: true, createdAt: Date.now() - 30 * DAY,
+      campus: COMMUNITY, age: 18 + (i % 4), xp: baseXp, xpLog: [], activities: [], assessments: [], missions: [], studySessions: [],
+      medical: { has: false, conditions: [], notes: '' }, sports: { plays: i % 3 === 0, list: i % 3 === 0 ? ['Football'] : [] },
+      profile: { fitnessLevel: ['beginner', 'intermediate', 'advanced'][i % 3], goal: 'general', equipment: [], environment: 'hostel', levelSource: 'assessment' },
+    };
+    const n = Math.max(3, Math.round(baseXp / 140));
+    for (let k = 0; k < n; k++) {
+      const d = 1 + Math.floor(rand() * 20);
+      p.activities.push(peerActivity(rand, at(offset, d, 7 + Math.floor(rand() * 14), Math.floor(rand() * 59)), Math.round(40 + rand() * 40)));
+    }
+    const b = { squats: 10 + i, pushups: 6 + (i % 5), jumpingJacks: 18 + i, plankSec: 25 + i * 3, flexibility: 35 + i * 2, balanceSec: 15 + i * 2 };
+    const l = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, Math.round(v * (1.1 + rand() * 0.25))]));
+    p.assessments = [
+      { id: uid(), createdAt: Date.now() - 18 * DAY, results: b, verified: {}, level: engine.levelFromAssessment(b) },
+      { id: uid(), createdAt: Date.now() - 3 * DAY, results: l, verified: {}, level: engine.levelFromAssessment(l) },
+    ];
+    if ([0, 1, 2, 4, 6].includes(i)) {
+      const gain = i === 1 ? 260 : 40 + i * 12; // Diya climbs past Aarav today
+      const when = at(offset, 0, 7 + i, 20);
+      p.activities.push(peerActivity(rand, when, gain));
+      p.xp += gain;
+      p.xpLog.push({ at: when, xp: gain, kind: 'mission', title: '10 MIN ENERGY BOOST' });
+    }
+    p.activities.sort((a, x) => a.completedAt - x.completedAt);
+    return p;
+  }
+
+  // Classmates are rebuilt from scratch once a day, so the demo community looks the same
+  // whenever it is opened (no drift over weeks or months).
   async function ensurePeers(offset) {
     const today = dayKey(Date.now(), offset);
+    const meta = await kv.get('demo/meta');
+    const fresh = meta?.day === today && meta?.v === 2;
     const peers = [];
-    for (const [i, [name, targetXp]] of PEERS.entries()) {
+    for (let i = 0; i < PEERS.length; i++) {
       const id = `demo-peer-${i + 1}`;
-      let p = await kv.get(K.user(id));
+      let p = fresh ? await kv.get(K.user(id)) : null;
       if (!p) {
-        const rand = rng(i + 7);
-        p = {
-          id, name, email: `${id}@demo.athlora.app`, demoPeer: true, onboarded: true, createdAt: Date.now() - 30 * DAY,
-          campus: COMMUNITY, age: 18 + (i % 4), xp: 0, xpLog: [], activities: [], assessments: [], missions: [], studySessions: [],
-          medical: { has: false, conditions: [], notes: '' }, sports: { plays: i % 3 === 0, list: i % 3 === 0 ? ['Football'] : [] },
-          profile: { fitnessLevel: ['beginner', 'intermediate', 'advanced'][i % 3], goal: 'general', equipment: [], environment: 'hostel', levelSource: 'assessment' },
-        };
-        const n = Math.max(3, Math.round(targetXp / 140));
-        for (let k = 0; k < n; k++) {
-          const d = 1 + Math.floor(rand() * 20);
-          p.activities.push(peerActivity(rand, at(offset, d, 7 + Math.floor(rand() * 14), Math.floor(rand() * 59)), Math.round(40 + rand() * 40)));
-        }
-        const b = { squats: 10 + i, pushups: 6 + (i % 5), jumpingJacks: 18 + i, plankSec: 25 + i * 3, flexibility: 35 + i * 2, balanceSec: 15 + i * 2 };
-        const l = Object.fromEntries(Object.entries(b).map(([k, v]) => [k, Math.round(v * (1.1 + rand() * 0.25))]));
-        p.assessments = [
-          { id: uid(), createdAt: Date.now() - 18 * DAY, results: b, verified: {}, level: engine.levelFromAssessment(b) },
-          { id: uid(), createdAt: Date.now() - 3 * DAY, results: l, verified: {}, level: engine.levelFromAssessment(l) },
-        ];
-        p.xp = targetXp;
+        p = buildPeer(i, offset);
+        await kv.set(K.user(id), p);
         await kv.set(K.campusPrefix(COMMUNITY) + id, { joinedAt: p.createdAt });
       }
       peers.push(p);
     }
-
-    // Once a day: some classmates move "today" (so buddies show ✓ and the leaderboard shows ▲/▼)
-    const meta = await kv.get('demo/meta');
-    if (meta?.day !== today) {
-      const rand = rng(Date.now());
-      for (const [i, p] of peers.entries()) {
-        p.activities = p.activities.filter((a) => Date.now() - a.completedAt < 28 * DAY);
-        p.xpLog = (p.xpLog || []).filter((e) => Date.now() - e.at < 3 * DAY);
-        if ([0, 1, 2, 4, 6].includes(i)) {
-          const gain = i === 1 ? 260 : 40 + i * 12; // Diya climbs past Aarav today
-          const when = at(offset, 0, 7 + i, 20);
-          p.activities.push(peerActivity(rand, when, gain));
-          p.xp += gain;
-          p.xpLog.push({ at: when, xp: gain, kind: 'mission', title: '10 MIN ENERGY BOOST' });
-        }
-        await kv.set(K.user(p.id), p);
-      }
-      await kv.set('demo/meta', { day: today });
-    } else {
-      for (const p of peers) if (!(await kv.get(K.user(p.id)))) await kv.set(K.user(p.id), p);
-    }
+    if (!fresh) await kv.set('demo/meta', { day: today, v: 2 });
 
     // Institution dashboard for the demo community (PIN shown in the demo banner)
     const instKey = `institution/${sha(campusKey(COMMUNITY))}`;
@@ -211,7 +228,8 @@ module.exports = function demoSeeder({ kv, engine, K, sha, campusKey, dayKey, hm
       const peers = await ensurePeers(offset);
       const u = buildDemoUser(offset, peers);
       await kv.set(K.user(u.id), u);
-      await kv.set(K.campusPrefix(COMMUNITY) + u.id, { joinedAt: u.createdAt });
+      // Not listed as a community member: visitors never see each other's copies, so the
+      // community, leaderboard and PE dashboard look the same for every judge.
       await kv.set(`demoindex/${u.id}`, { createdAt: Date.now() });
       return u;
     },

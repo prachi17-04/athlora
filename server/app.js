@@ -358,9 +358,10 @@ function createApp(kv) {
         return (await Promise.all(keys.map((k) => kv.get(k)))).filter(Boolean);
       });
     // Always use the requesting student's freshest record.
-    // Demo profiles (and their sample classmates) never mix with real students.
+    // Demo profiles (and their sample classmates) never mix with real students, and each demo
+    // visitor sees only the sample classmates (not other visitors' copies), so it always looks the same.
     const isDemo = (x) => Boolean(x.demo || x.demoPeer);
-    users = [...users.filter((x) => x.id !== u.id && x.onboarded && isDemo(x) === isDemo(u)), u];
+    users = [...users.filter((x) => x.id !== u.id && x.onboarded && (u.demo ? x.demoPeer : !isDemo(x))), u];
 
     const offset = tzOffset(req);
     const todayStart = Date.parse(dayKey(Date.now(), offset) + 'T00:00:00Z') + offset * 60000;
