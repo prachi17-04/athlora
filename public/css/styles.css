@@ -332,6 +332,15 @@ h1, h2, h3, p { margin: 0; }
 .streak-banner.on .streak-num { background: linear-gradient(160deg, #ffb547, #ff6b2c); color: #1a0d00; }
 .streak-banner.on .streak-num span { color: rgba(26,13,0,.75); }
 
+/* ---------- demo profile banner ---------- */
+.demo-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -6px 0 14px;
+  padding: 9px 14px; border-radius: 12px; font-size: 12.5px;
+  background: linear-gradient(90deg, rgba(245,158,11,.16), rgba(245,158,11,.06)); border: 1px solid rgba(245,158,11,.35); color: #fcd9a0;
+}
+.demo-banner b { color: #fff; }
+.demo-banner .link { color: #fcd9a0; font-weight: 700; flex: none; }
+
 /* ---------- level pill (top-right): fills toward the next level ---------- */
 .level-pill {
   position: relative; overflow: hidden; display: inline-flex; align-items: center;

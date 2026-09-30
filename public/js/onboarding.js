@@ -1,5 +1,5 @@
 import { api, session } from './api.js';
-import { esc, MEDICAL_OPTIONS, SPORT_OPTIONS } from './ui.js';
+import { esc, toast, MEDICAL_OPTIONS, SPORT_OPTIONS } from './ui.js';
 
 const DRAFT_KEY = 'athlora_onboarding';
 const STEPS = ['name', 'email', 'age', 'medical', 'sports'];
@@ -77,10 +77,28 @@ export function startOnboarding(root, { user, onDone }) {
           </div>
           <div class="onb-foot" style="margin-top:48px">
             <button class="btn primary block" id="start">Get started</button>
-            <p class="muted small">Already joined? Use the same email and we'll sign you back in.</p>
+            <button class="btn ghost block" id="demo">👀 Try the demo</button>
+            <p class="muted small">Already joined? Use the same email and we'll sign you back in.<br/>
+              <span class="tiny">The demo opens a ready-made student profile with sample data, with no sign-up.</span></p>
           </div>
         </div>`;
       root.querySelector('#start').onclick = () => go('name');
+      root.querySelector('#demo').onclick = async (e) => {
+        const btn = e.currentTarget;
+        btn.disabled = true;
+        btn.textContent = 'Preparing demo…';
+        try {
+          const r = await api('/auth/demo', { method: 'POST' });
+          session.set(r.token);
+          clearDraft();
+          location.hash = '#/dashboard';
+          onDone(r.user);
+        } catch (err) {
+          btn.disabled = false;
+          btn.textContent = '👀 Try the demo';
+          toast(err.message, true);
+        }
+      };
       return;
     }
 

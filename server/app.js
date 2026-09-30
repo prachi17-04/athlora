@@ -41,7 +41,8 @@ function publicUser(u) {
   return {
     id: u.id, name: u.name, email: u.email, age: u.age ?? null,
     medical: u.medical ?? null, sports: u.sports ?? null,
-    onboarded: Boolean(u.onboarded), campus: u.campus || '',
+    onboarded: Boolean(u.onboarded), campus: u.campus || '', demo: Boolean(u.demo),
+    ...(u.demo ? { demoInfo: { community: 'ATHLORA Demo College', pin: 'demo2026' } } : {}),
     profile: u.profile, createdAt: u.createdAt,
     timetable: u.timetable || { dayStart: '08:00', dayEnd: '18:00', classes: [] },
     buddyCount: (u.buddies || (u.buddy ? [u.buddy] : [])).length,
@@ -273,6 +274,16 @@ function createApp(kv) {
     res.json({ token, user: publicUser(user) });
   }));
 
+  // "Try demo": a ready-made demo student, no sign-up needed (for judges and visitors)
+  const demo = require('./demo')({ kv, engine, K, sha, campusKey, dayKey, hmac, uid });
+  api.post('/auth/demo', rateLimit, h(async (req, res) => {
+    const user = await demo.createDemo(tzOffset(req));
+    const token = crypto.randomBytes(32).toString('hex');
+    await kv.set(K.session(hmac(token)), { userId: user.id, createdAt: Date.now(), expiresAt: Date.now() + 2 * DAY_MS });
+    lbCache.clear();
+    res.json({ token, user: publicUser(user) });
+  }));
+
   api.post('/auth/logout', auth, h(async (req, res) => {
     await kv.delete(K.session(req.tokenHash));
     res.json({ ok: true });
@@ -346,8 +357,10 @@ function createApp(kv) {
         const keys = await kv.list('user/');
         return (await Promise.all(keys.map((k) => kv.get(k)))).filter(Boolean);
       });
-    // Always use the requesting student's freshest record
-    users = [...users.filter((x) => x.id !== u.id && x.onboarded), u];
+    // Always use the requesting student's freshest record.
+    // Demo profiles (and their sample classmates) never mix with real students.
+    const isDemo = (x) => Boolean(x.demo || x.demoPeer);
+    users = [...users.filter((x) => x.id !== u.id && x.onboarded && isDemo(x) === isDemo(u)), u];
 
     const offset = tzOffset(req);
     const todayStart = Date.parse(dayKey(Date.now(), offset) + 'T00:00:00Z') + offset * 60000;
@@ -628,7 +641,8 @@ function createApp(kv) {
     // Only what a buddy needs: first name, moved today or not, the shared streak
     const buddies = buddiesOf(u)
       .map((b, i) => ({ b, other: others[i] }))
-      .filter(({ other }) => other && buddiesOf(other).some((x) => x.userId === u.id))
+      // Sample classmates in the demo are one-way buddies (they'd otherwise collect every demo visitor)
+      .filter(({ other }) => other && (other.demoPeer || buddiesOf(other).some((x) => x.userId === u.id)))
       .map(({ b, other }) => ({
         id: other.id,
         name: firstName(other),

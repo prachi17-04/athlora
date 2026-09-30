@@ -65,6 +65,11 @@ function mountShell() {
           <span class="level-text" id="lvlText"></span>
         </a>
       </header>
+      ${store.user?.demo ? `
+        <div class="demo-banner">
+          <span>👀 <b>Demo profile</b> · sample data${store.user.demoInfo ? ` · PE dashboard PIN <b>${esc(store.user.demoInfo.pin)}</b>` : ''}</span>
+          <button class="link" id="exitDemo">Exit</button>
+        </div>` : ''}
       <main id="view"></main>
     </div>
     <nav class="bottom-nav" aria-label="Main">
@@ -125,6 +130,7 @@ async function route() {
 async function enterApp(user) {
   store.user = user;
   mountShell();
+  document.getElementById('exitDemo')?.addEventListener('click', () => app.logout());
   try { await app.refreshStats(); } catch (e) { toast(e.message, true); }
   if (!location.hash || location.hash === '#/' || location.hash === '#') location.hash = '#/dashboard';
   else route();
