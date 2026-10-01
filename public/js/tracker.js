@@ -2,7 +2,7 @@
 // MediaPipe Pose Landmarker -> joint angles -> rep / hold counters.
 // Video never leaves the device.
 
-import { primeAudio, sayCount, ting, createFinalTicker, soundOn, setSound } from './sound.js';
+import { primeAudio, cueRep, sayDone, ting, createFinalTicker, soundOn, setSound } from './sound.js';
 import { hasDemo, stillSVG, mainFocus } from './demo.js';
 
 const VER = '0.10.14';
@@ -672,6 +672,8 @@ export function openTracker(o) {
           phase = 'active';
           activeStart = performance.now();
           $done.disabled = false;
+          // Rep moves: call out the first rep ("onnne…")
+          if (!isHold) setTimeout(() => { if (!closed && counter.count === 0) cueRep(1); }, 500);
         }
       }, 1000);
     }
@@ -707,8 +709,12 @@ export function openTracker(o) {
       if (r.tracking) trackedFrames++;
       if (r.rep) {
         navigator.vibrate?.(25);
-        // Counters only report a rep when it met the movement standard, so every spoken number is a correct rep
-        if (!isHold) sayCount(counter.count);
+        // Counters only report a rep when it met the movement standard, so the voice moves on to
+        // the next number only after a correct rep ("twooo…"), until the set is done
+        if (!isHold) {
+          if (o.target && counter.count >= o.target) sayDone();
+          else cueRep(counter.count + 1);
+        }
       }
       // Timed moves stay quiet, then tick through their last 5 seconds
       if (isHold && o.target) finalTick(o.target - counter.held);

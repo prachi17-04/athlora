@@ -151,7 +151,14 @@ function computeStats(user, offset) {
   const recentForm = acts.filter((a) => typeof a.formAvg === 'number' && now - a.completedAt < 14 * DAY_MS);
   const study = user.studySessions || [];
   const studyMin = study.reduce((s, x) => s + x.minutes, 0);
+  const sleepToday = user.sleepLog?.[today] || null;
   return {
+    // Last night's sleep (asked once a day): 'skip' = asked and skipped
+    sleep: {
+      asked: Boolean(sleepToday),
+      band: sleepToday && sleepToday.band !== 'skip' ? sleepToday.band : null,
+      ...(sleepToday && sleepToday.band !== 'skip' ? engine.sleepEnergy(sleepToday.band) : {}),
+    },
     adaptiveTargets: engine.personalTargets(user),
     study: {
       sessions: study.length,
@@ -432,6 +439,7 @@ function createApp(kv) {
       equipment: req.body.equipment || u.profile.equipment,
       seated: typeof req.body.seated === 'boolean' ? req.body.seated : undefined,
       recentMoves: u.recentMoves || [],
+      sleep: stats.sleep.band,
     }, { comeback: stats.comeback, inactiveDays: stats.inactiveDays });
     const record = { id: uid(), createdAt: Date.now(), status: 'pending', ...mission };
     // Remember the last few missions' exercises, so the next one mixes things up
@@ -560,6 +568,19 @@ function createApp(kv) {
       totalMin: Math.round(totalMin), goalMin: Math.max(60, members.length * 60),
       missions, myMin: Math.round(myMin * 10) / 10,
     });
+  }));
+
+  // Last night's sleep, asked once a day; today's missions adjust to it
+  api.put('/me/sleep', auth, h(async (req, res) => {
+    const band = req.body?.band;
+    if (band !== 'skip' && !engine.SLEEP_BANDS[band]) return res.status(400).json({ error: 'Pick how long you slept' });
+    const u = req.user;
+    const offset = tzOffset(req);
+    const today = dayKey(Date.now(), offset);
+    u.sleepLog = Object.fromEntries(Object.entries(u.sleepLog || {}).filter(([k]) => k >= shiftDay(today, -30)));
+    u.sleepLog[today] = { band, at: Date.now() };
+    await saveUser(u);
+    res.json({ stats: computeStats(u, offset) });
   }));
 
   // =============== TIMETABLE-AWARE OPPORTUNITY ENGINE ===============

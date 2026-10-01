@@ -80,6 +80,7 @@ export async function render(el, app) {
             <span class="tag">${esc(ENV_LABEL[m.environment] || m.environment)}</span>
             <span class="tag">${esc(m.level)}</span>
             ${m.adaptive ? '<span class="tag lime">Seated mode</span>' : ''}
+            ${m.sleep && m.sleep.energy !== 'normal' ? `<span class="tag lime">🌙 ${m.sleep.energy === 'low' ? 'Light day' : 'Easier day'}</span>` : ''}
             ${(m.healthLabels || []).map((l) => `<span class="tag lime">🩺 ${esc(l)}</span>`).join('')}
             ${m.comeback ? '<span class="tag warn">Easy restart</span>' : ''}
           </div>
@@ -101,6 +102,7 @@ export async function render(el, app) {
           ${m.items.some((it) => it.personalized) ? '<p class="tiny muted mt-8">🧠 Targets marked "for you" were learned from your own verified results.</p>' : ''}
           ${m.healthLabels?.length ? '<p class="tiny muted mt-8">🩺 Built from your health-safe plan. Go at your own pace and stop if anything hurts.</p>' : ''}
           ${m.note ? `<p class="note mt-16">${esc(m.note)}</p>` : ''}
+          ${m.sleep?.note ? `<p class="note sleep-note mt-16">🌙 ${esc(m.sleep.note)}</p>` : ''}
           ${m.followUp ? `<p class="note mt-16">After class: ${esc(m.followUp.text)}.</p>` : ''}
         </section>
         <button class="btn primary block" id="start">START</button>

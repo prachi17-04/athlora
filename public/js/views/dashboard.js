@@ -1,5 +1,6 @@
 import { api } from '../api.js';
 import { esc, chips, bindChips, chipValue, toast, TIME_OPTIONS, ENV_OPTIONS } from '../ui.js';
+import { askSleep } from '../sleep.js';
 import { remindersEnabled, remindersSupported, enableReminders, disableReminders, scheduleReminders } from '../reminders.js';
 
 const ENV_LABEL = Object.fromEntries(ENV_OPTIONS);
@@ -147,6 +148,9 @@ export async function render(el, app) {
       <section class="card hero">
         <h2>How much time do you have?</h2>
         <p class="muted small mt-8">ATHLORA turns it into a Move Mission that fits where you are right now.</p>
+        <button class="sleep-chip mt-8 ${stats.sleep?.energy || ''}" id="sleepChip">${stats.sleep?.band
+          ? `🌙 Slept ${esc(stats.sleep.label)} · ${stats.sleep.energy === 'low' ? 'light missions today' : stats.sleep.energy === 'moderate' ? 'easier missions today' : 'full energy'} <u>change</u>`
+          : '🌙 How did you sleep? <u>Tell ATHLORA</u>'}</button>
         <div class="mt-16">${chips('time', TIME_OPTIONS, '5')}</div>
         <p class="upper mt-16">Where are you?</p>
         <div class="mt-8">${chips('env', ENV_OPTIONS, u.profile.environment || 'room')}</div>
@@ -183,6 +187,7 @@ export async function render(el, app) {
     store.missionRequest = { minutes: 4, environment: u.profile.environment || 'room' };
     app.navigate('move');
   });
+  el.querySelector('#sleepChip').onclick = () => askSleep(app);
   el.querySelector('#buddyCard')?.addEventListener('click', () => app.navigate('community'));
   el.querySelector('#studyGo').onclick = () => app.navigate('study');
   el.querySelector('#healthPlanGo')?.addEventListener('click', () => app.navigate('setup'));

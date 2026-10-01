@@ -1,6 +1,7 @@
 import { api, session } from './api.js';
 import { ICONS, esc, toast } from './ui.js';
 import { startOnboarding } from './onboarding.js';
+import { maybeAskSleep } from './sleep.js';
 import * as dashboard from './views/dashboard.js';
 import * as move from './views/move.js';
 import * as setup from './views/setup.js';
@@ -149,6 +150,7 @@ async function enterApp(user) {
   try { await app.refreshStats(); } catch (e) { toast(e.message, true); }
   if (!location.hash || location.hash === '#/' || location.hash === '#') location.hash = '#/dashboard';
   else route();
+  maybeAskSleep(app); // once a day: how much did you sleep?
 }
 
 async function boot() {
@@ -172,6 +174,16 @@ async function boot() {
 
 // route() is a no-op until the app shell is mounted, so it is safe to listen from the start
 window.addEventListener('hashchange', route);
+
+// App left open overnight: ask about sleep when it's brought back on a new day
+let lastSeenDay = new Date().toDateString();
+document.addEventListener('visibilitychange', async () => {
+  if (document.visibilityState !== 'visible' || !store.user?.onboarded) return;
+  const day = new Date().toDateString();
+  if (day === lastSeenDay) return;
+  lastSeenDay = day;
+  try { await app.refreshStats(); maybeAskSleep(app); } catch {}
+});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

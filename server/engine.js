@@ -117,8 +117,8 @@ function personalAmount(user, move, li, { learn = true } = {}) {
  * @returns changes [{ moveId, name, unit, from, to, direction }]
  */
 function adaptTargets(user, mission, results) {
-  // Comeback missions and capped-intensity health plans (heart, recent injury) never change targets
-  if (mission.comeback || healthPlan(user).capIntensity) return [];
+  // Comeback missions, capped-intensity health plans (heart, recent injury) and tired (short-sleep) days never change targets
+  if (mission.comeback || mission.sleep?.energy === 'low' || mission.sleep?.energy === 'moderate' || healthPlan(user).capIntensity) return [];
   const state = (user.adaptiveTargets ||= {});
   const li = LEVELS.indexOf(mission.level) === -1 ? levelIndex(user) : LEVELS.indexOf(mission.level);
   const changes = [];
@@ -317,6 +317,26 @@ function healthPlan(user) {
   };
 }
 
+// ---------- Sleep: last night's sleep decides how hard today's missions are ----------
+const SLEEP_BANDS = {
+  'lt4': { label: 'Under 4 h', energy: 'low' },
+  '4-5': { label: '4–5 h', energy: 'low' },
+  '5-6': { label: '5–6 h', energy: 'moderate' },
+  '6-7': { label: '6–7 h', energy: 'normal' },
+  '7-8': { label: '7–8 h', energy: 'normal' },
+  '8+': { label: '8+ h', energy: 'normal' },
+};
+function sleepEnergy(band) {
+  const b = SLEEP_BANDS[band];
+  if (!b) return null;
+  const note = b.energy === 'low'
+    ? `You slept ${b.label}, so today's mission is light: gentle targets, no jumping, more mobility. Rest well tonight!`
+    : b.energy === 'moderate'
+      ? `You slept ${b.label}, so today's mission is a bit easier than usual, with no high-impact moves.`
+      : null;
+  return { label: b.label, energy: b.energy, note };
+}
+
 /**
  * @param user     full user record (profile, onboarding)
  * @param ctx      { minutes, environment, equipment[] }
@@ -335,10 +355,14 @@ function generateMission(user, ctx, recent) {
 
   const health = healthPlan(user);
   const avoidIds = new Set(health.conditions.flatMap((c) => c.avoid.map((a) => a.id)));
+  // Last night's sleep sets today's energy: short sleep -> gentler amounts, no jumping, more mobility
+  const sleep = sleepEnergy(ctx.sleep);
+  const tired = sleep && sleep.energy !== 'normal';
   // Heart conditions and recent injuries stay at the gentlest amounts and never auto-increase
-  const li = comeback || health.capIntensity ? 0 : levelIndex(user);
+  const baseLi = comeback || health.capIntensity ? 0 : levelIndex(user);
+  const li = sleep?.energy === 'low' ? 0 : sleep?.energy === 'moderate' ? Math.max(0, baseLi - 1) : baseLi;
   const goal = GOALS.includes(user.profile?.goal) ? user.profile.goal : 'general';
-  const lowImpact = health.active;
+  const lowImpact = health.active || tired;
   // Seated can be chosen per mission ("Sitting only"); otherwise the profile's mode applies
   const adaptive = typeof ctx.seated === 'boolean' ? ctx.seated : Boolean(user.profile?.adaptive);
   // Exercises from the last few missions are picked less often, so repeat missions feel different
@@ -365,7 +389,7 @@ function generateMission(user, ctx, recent) {
   const volume = health.capIntensity ? 1 : minutes >= 40 ? 1.5 : minutes >= 25 ? 1.25 : 1;
   const withVolume = (m, a) => (m.flex || volume === 1 ? a : m.unit === 'sec' ? Math.max(10, round5(a * volume)) : Math.max(1, Math.round(a * volume)));
   // Personal (learned) amounts, except in comeback missions which stay easy
-  const amt = (m) => withVolume(m, personalAmount(user, m, li, { learn: !comeback && !health.capIntensity }));
+  const amt = (m) => withVolume(m, personalAmount(user, m, li, { learn: !comeback && !health.capIntensity && !tired }));
   const add = (move, label) => {
     const amount = amt(move);
     const item = makeItem(move, amount, label, withVolume(move, move.amount[li]));
@@ -386,7 +410,8 @@ function generateMission(user, ctx, recent) {
   // 3. Main block: a few distinct moves weighted toward the student's goal,
   //    repeated in rounds when there is time (a focused mission beats a long list)
   const maxMain = minutes <= 3 ? 3 : minutes <= 5 ? 4 : minutes <= 12 ? 5 : 6;
-  const weight = (m) => (goal !== 'general' && m.cat === goal ? 3 : 1) * (m.cv ? 1.5 : 1) * freshness(m);
+  const weight = (m) => (goal !== 'general' && m.cat === goal ? 3 : 1) * (m.cv ? 1.5 : 1) * freshness(m) *
+    (sleep?.energy === 'low' ? (m.cat === 'mobility' ? 4 : m.cat === 'strength' ? 0.5 : 1) : sleep?.energy === 'moderate' && m.cat === 'mobility' ? 2 : 1);
   const mainSet = [];
   // Stairs nearby: always include a short stair climb
   const stairs = !adaptive && equipment.includes('stairs') && pool.find((m) => m.id === 'stairs');
@@ -434,7 +459,7 @@ function generateMission(user, ctx, recent) {
     : null;
 
   return {
-    title: missionTitle(minutes, { classroom, comeback, adaptive }),
+    title: sleep?.energy === 'low' && !classroom && !comeback ? `${minutes} MIN GENTLE MOVE` : missionTitle(minutes, { classroom, comeback, adaptive }),
     minutes,
     environment,
     equipment,
@@ -443,6 +468,7 @@ function generateMission(user, ctx, recent) {
     lowImpact,
     adaptive,
     healthLabels: health.active ? health.labels : [],
+    sleep: sleep ? { ...sleep, band: ctx.sleep } : null,
     note: classroom && requestedMinutes > minutes
       ? `Classroom missions are kept to ${minutes} minutes of quiet desk-side moves. Pick Room, Campus or Playground for a longer session.`
       : null,
@@ -679,5 +705,5 @@ module.exports = {
   LEVELS, ENVIRONMENTS, EQUIPMENT, GOALS, TESTS, FIT_INDIA_COMPONENTS,
   generateMission, scoreMission, levelFromAssessment, fitnessGrowth,
   fitIndiaReport, findOpportunities, toMin,
-  adaptTargets, personalTargets, classBreakRoutine, healthPlan,
+  adaptTargets, personalTargets, classBreakRoutine, healthPlan, SLEEP_BANDS, sleepEnergy,
 };

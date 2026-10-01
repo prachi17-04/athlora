@@ -358,6 +358,36 @@ h1, h2, h3, p { margin: 0; }
 .level-pill:hover { filter: brightness(1.12); }
 /* Nearly there: a gentle glow */
 .level-pill.almost { box-shadow: 0 0 0 1px rgba(111, 125, 255, 0.5), 0 0 14px rgba(63, 180, 255, 0.45); }
+/* ---------- daily sleep check-in ---------- */
+.sleep-modal {
+  position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px;
+  background: rgba(3, 8, 20, 0.72); backdrop-filter: blur(4px);
+}
+.sleep-card {
+  width: 100%; max-width: 400px; text-align: center; padding: 24px 20px 16px; border-radius: 22px;
+  background: linear-gradient(180deg, #13224a, var(--card)); border: 1px solid rgba(111, 125, 255, 0.35);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+.sleep-card h2 { font-size: 20px; font-weight: 800; }
+.sleep-moon { font-size: 40px; line-height: 1; margin-bottom: 8px; }
+.sleep-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.sleep-opt {
+  display: grid; gap: 4px; justify-items: center; padding: 12px 4px; border-radius: 14px; cursor: pointer;
+  background: var(--card-2); border: 1px solid var(--line); color: var(--text); font: inherit;
+}
+.sleep-opt span { font-size: 24px; }
+.sleep-opt b { font-size: 13px; }
+.sleep-opt:hover, .sleep-opt.on { border-color: rgba(63, 180, 255, 0.8); background: rgba(63, 180, 255, 0.14); }
+.sleep-opt:disabled { opacity: .6; }
+.sleep-card .link { color: var(--muted); font-size: 13px; }
+.sleep-chip {
+  display: inline-block; padding: 6px 12px; border-radius: 999px; font: inherit; font-size: 12.5px; cursor: pointer;
+  background: rgba(111, 125, 255, 0.14); border: 1px solid rgba(111, 125, 255, 0.35); color: var(--text); text-align: left;
+}
+.sleep-chip.low { background: rgba(245, 158, 11, 0.14); border-color: rgba(245, 158, 11, 0.4); }
+.sleep-chip u { color: var(--accent); margin-left: 4px; }
+@media (max-width: 360px) { .sleep-grid { grid-template-columns: repeat(2, 1fr); } }
+
 /* Just earned XP: the pill pulses and "+40 XP" floats up from it */
 .level-pill.bump { animation: pill-bump .6s ease; }
 @keyframes pill-bump { 40% { transform: scale(1.08); box-shadow: 0 0 18px rgba(63, 180, 255, 0.7); } }

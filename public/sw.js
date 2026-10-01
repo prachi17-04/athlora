@@ -1,5 +1,5 @@
 ﻿// ATHLORA service worker: makes the app installable and loads the shell offline.
-const CACHE = 'athlora-v15';
+const CACHE = 'athlora-v16';
 const SHELL = [
   '/', '/index.html', '/css/styles.css', '/manifest.webmanifest',
   '/icons/icon.svg', '/icons/icon-192.png', '/icons/icon-512.png',
@@ -7,7 +7,7 @@ const SHELL = [
   '/js/views/dashboard.js', '/js/views/move.js', '/js/views/setup.js',
   '/js/views/passport.js', '/js/views/campus.js',
   '/institution.html', '/js/institution.js',
-  '/js/sensors.js', '/js/posture.js', '/js/breakclock.js', '/js/views/study.js', '/js/views/break.js',
+  '/js/sensors.js', '/js/sleep.js', '/js/posture.js', '/js/breakclock.js', '/js/views/study.js', '/js/views/break.js',
   '/break.html', '/js/break-screen.js', '/verify.html', '/js/verify.js',
   '/js/demo.js', '/js/sound.js', '/js/views/classbreak.js', '/js/views/xp.js', '/js/views/leaderboard.js',
 ];

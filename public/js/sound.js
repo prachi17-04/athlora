@@ -72,18 +72,34 @@ export function ting() {
   tone(3136, 0.4, { vol: 0.04 });
 }
 
-/** Speak the rep count after a correct rep. */
-export function sayCount(n) {
+function speak(text, { rate = 1.15, pitch = 1 } = {}) {
   if (!soundOn() || typeof speechSynthesis === 'undefined') return;
   try {
     speechSynthesis.cancel(); // never let counts pile up behind a fast set
-    const u = new SpeechSynthesisUtterance(String(n));
+    const u = new SpeechSynthesisUtterance(text);
     if (voice) u.voice = voice;
     u.lang = voice?.lang || 'en-IN';
-    u.rate = 1.15;
+    u.rate = rate;
+    u.pitch = pitch;
     u.volume = 1;
     speechSynthesis.speak(u);
   } catch {}
+}
+
+/** Speak the rep count after a correct rep. */
+export function sayCount(n) {
+  speak(String(n));
+}
+
+const WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+  'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+/** Calls out the rep to do next, long and slow like a coach: "onnne…", then "twooo…" after a correct rep. */
+export function cueRep(n) {
+  speak(`${WORDS[n] || n}…`, { rate: 0.72, pitch: 1.05 });
+}
+/** Said when the last rep of the set is done. */
+export function sayDone() {
+  speak('Done! Great set.', { rate: 1 });
 }
 
 /**
